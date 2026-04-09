@@ -41,13 +41,12 @@ end
 
 function Nameplates:CreateModelFrame()
     if modelFrame then return end
-    -- DO NOT Hide() the model frame — a hidden PlayerModel won't load
-    -- model data, causing GetModelFileID() to return nil.
-    -- Position offscreen so it's invisible but technically "shown".
+    -- PlayerModel must remain shown for SetUnit/GetModelFileID to work.
+    -- Hide() and SetAlpha(0) both prevent model loading.
+    -- Position offscreen at 1x1 pixel — invisible but functional.
     modelFrame = CreateFrame("PlayerModel", nil, UIParent)
     modelFrame:SetSize(1, 1)
     modelFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -200, 200)
-    modelFrame:SetAlpha(0)
 end
 
 ----------------------------------------------------------------
@@ -251,7 +250,10 @@ function Nameplates:BuildFingerprint(unit)
         return nil
     end
 
-    local ok, err = pcall(modelFrame.SetUnit, modelFrame, unit)
+    local ok, err = pcall(function()
+        modelFrame:ClearModel()
+        modelFrame:SetUnit(unit)
+    end)
     if not ok then
         PA:Debug("Nameplates: SetUnit failed:", err)
         return nil
