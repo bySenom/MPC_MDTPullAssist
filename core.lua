@@ -24,13 +24,21 @@ PA.Display = PA.Display or {}
 PA.Nameplates = PA.Nameplates or {}
 PA.Options = PA.Options or {}
 
-local issecretvalue = issecretvalue or function() return false end
+-- DO NOT read the issecretvalue global at file scope!
+-- It is a Blizzard secure function; reading it taints the execution chunk,
+-- causing all subsequent RegisterEvent/CreateFrame calls to trigger
+-- ADDON_ACTION_FORBIDDEN. Access it lazily inside function bodies only.
+local function isSecretValue(val)
+    local fn = rawget(_G, "issecretvalue")
+    if fn then return fn(val) end
+    return false
+end
 
 -- Utility: detect current dungeon challengeMapID
 function PA:GetCurrentChallengeMapID()
     if C_ChallengeMode and C_ChallengeMode.GetActiveChallengeMapID then
         local mapID = C_ChallengeMode.GetActiveChallengeMapID()
-        if mapID and not issecretvalue(mapID) then return mapID end
+        if mapID and not isSecretValue(mapID) then return mapID end
     end
     return nil
 end
@@ -47,19 +55,19 @@ function PA:ReadEnemyForcesRaw()
     if not C_ScenarioInfo or not C_ScenarioInfo.GetScenarioStepInfo then return 0, 0 end
     local stepInfo = C_ScenarioInfo.GetScenarioStepInfo()
     if not stepInfo or not stepInfo.numCriteria then return 0, 0 end
-    if issecretvalue(stepInfo.numCriteria) then return 0, 0 end
+    if isSecretValue(stepInfo.numCriteria) then return 0, 0 end
     for i = 1, stepInfo.numCriteria do
         local cInfo = C_ScenarioInfo.GetCriteriaInfo(i)
         if cInfo and cInfo.isWeightedProgress then
             local total = cInfo.totalQuantity
-            if not total or issecretvalue(total) then return 0, 0 end
+            if not total or isSecretValue(total) then return 0, 0 end
             local qStr = cInfo.quantityString
-            if qStr and not issecretvalue(qStr) then
+            if qStr and not isSecretValue(qStr) then
                 local rawCount = tonumber(qStr:match("(%d+)"))
                 if rawCount then return rawCount, total end
             end
             local qty = cInfo.quantity
-            if qty and not issecretvalue(qty) then return qty, total end
+            if qty and not isSecretValue(qty) then return qty, total end
             return 0, total
         end
     end
@@ -118,7 +126,7 @@ function PA:DetectCurrentMapID()
     -- Method 3: From MDT zone mapping
     if MDT and MDT.zoneIdToDungeonIdx and C_Map and C_Map.GetBestMapForUnit then
         local zoneId = C_Map.GetBestMapForUnit("player")
-        if zoneId and not issecretvalue(zoneId) then
+        if zoneId and not isSecretValue(zoneId) then
             local dungeonIdx = MDT.zoneIdToDungeonIdx[zoneId]
             if dungeonIdx then
                 local challengeMapID = self.Mapping:GetChallengeMapID(dungeonIdx)
@@ -155,24 +163,19 @@ function PA:ReloadRoute()
 end
 
 -- Event frame
+-- IMPORTANT: No secure globals (issecretvalue, etc.) were read before this
+-- point, so the execution context is untainted and RegisterEvent is safe.
 local eventFrame = CreateFrame("Frame")
-
--- RegisterEvent() is protected during /reload in combat.
--- InCombatLockdown() returns false during addon load even when protected.
--- NEVER call RegisterEvent at file load time. Instead, defer to OnUpdate
--- which fires on the next rendered frame when the frame system is safe.
-local allEvents = {
-    "ADDON_LOADED",
-    "PLAYER_ENTERING_WORLD",
-    "CHALLENGE_MODE_START",
-    "CHALLENGE_MODE_COMPLETED",
-    "CHALLENGE_MODE_RESET",
-    "SCENARIO_CRITERIA_UPDATE",
-    "COMBAT_LOG_EVENT_UNFILTERED",
-    "PLAYER_REGEN_DISABLED",
-    "PLAYER_REGEN_ENABLED",
-    "ZONE_CHANGED_NEW_AREA",
-}
+eventFrame:RegisterEvent("ADDON_LOADED")
+eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+eventFrame:RegisterEvent("CHALLENGE_MODE_START")
+eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
+eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
+eventFrame:RegisterEvent("SCENARIO_CRITERIA_UPDATE")
+eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 
 local function OnAddonLoaded(addonName)
     if addonName ~= ADDON_NAME then return end
@@ -183,23 +186,6 @@ local function OnAddonLoaded(addonName)
     -- Enable immediately
     PA:OnEnable()
 end
-
-local eventsRegistered = false
-eventFrame:SetScript("OnUpdate", function(self)
-    if InCombatLockdown() then return end
-    for _, event in ipairs(allEvents) do
-        self:RegisterEvent(event)
-    end
-    eventsRegistered = true
-    self:SetScript("OnUpdate", nil)
-
-    -- We may have missed ADDON_LOADED, trigger init manually
-    if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(ADDON_NAME) then
-        OnAddonLoaded(ADDON_NAME)
-    elseif IsAddOnLoaded and IsAddOnLoaded(ADDON_NAME) then
-        OnAddonLoaded(ADDON_NAME)
-    end
-end)
 
 -- Called when the addon is enabled
 local enabled = false
@@ -253,8 +239,7 @@ local function HandleCombatLog()
 
     if not destGUID or type(destGUID) ~= "string" then return end
 
-    local issecretvalue = issecretvalue or function() return false end
-    if issecretvalue(destGUID) then return end
+    if isSecretValue(destGUID) then return end
 
     -- Parse NPC ID from GUID
     local guidType = strsplit("-", destGUID)

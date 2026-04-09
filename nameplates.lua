@@ -8,7 +8,13 @@ local PA = NS.PullAssist
 local Nameplates = {}
 PA.Nameplates = Nameplates
 
-local issecretvalue = issecretvalue or function() return false end
+-- DO NOT read issecretvalue at file scope (causes execution taint).
+-- Use the shared isSecretValue() wrapper from core.lua via PA namespace.
+local function isSecret(val)
+    local fn = rawget(_G, "issecretvalue")
+    if fn then return fn(val) end
+    return false
+end
 
 -- State
 local overlays = {}             -- [nameplate frame] = overlay frame
@@ -78,7 +84,7 @@ end
 function Nameplates:IdentifyUnit(unit)
     -- Strategy 1: GUID parsing (works outside instances)
     local guid = UnitGUID(unit)
-    if guid and not issecretvalue(guid) then
+    if guid and not isSecret(guid) then
         local guidType = strsplit("-", guid)
         if guidType == "Creature" or guidType == "Vehicle" then
             local _, _, _, _, _, rawID = strsplit("-", guid)
@@ -93,7 +99,7 @@ function Nameplates:IdentifyUnit(unit)
 
     -- Strategy 2: UnitName matching against MDT names
     local name = UnitName(unit)
-    if name and not issecretvalue(name) then
+    if name and not isSecret(name) then
         local npcID = nameLookup[name]
         if npcID then return npcID end
     end
@@ -104,7 +110,7 @@ function Nameplates:IdentifyUnit(unit)
         local nameFS = self:FindNameFontString(nameplate)
         if nameFS then
             local ok, text = pcall(nameFS.GetText, nameFS)
-            if ok and text and not issecretvalue(text) then
+            if ok and text and not isSecret(text) then
                 local npcID = nameLookup[text]
                 if npcID then return npcID end
             end
@@ -183,23 +189,23 @@ function Nameplates:BuildFingerprint(unit)
 
     modelFrame:SetUnit(unit)
     local modelID = modelFrame:GetModelFileID()
-    if not modelID or issecretvalue(modelID) or modelID <= 0 then return nil end
+    if not modelID or isSecret(modelID) or modelID <= 0 then return nil end
 
     local level = UnitLevel(unit)
-    if not level or issecretvalue(level) then return nil end
+    if not level or isSecret(level) then return nil end
     local relLevel = level % 10
 
     local classification = UnitClassification(unit)
-    if not classification or issecretvalue(classification) then classification = "x" end
+    if not classification or isSecret(classification) then classification = "x" end
 
     local sex = UnitSex(unit)
-    if not sex or issecretvalue(sex) then sex = 0 end
+    if not sex or isSecret(sex) then sex = 0 end
 
     local _, classToken = UnitClass(unit)
-    if not classToken or issecretvalue(classToken) then classToken = "x" end
+    if not classToken or isSecret(classToken) then classToken = "x" end
 
     local powerType = UnitPowerType(unit)
-    if not powerType or issecretvalue(powerType) then powerType = -1 end
+    if not powerType or isSecret(powerType) then powerType = -1 end
 
     return string.format("%d:%d:%s:%d:%s:%d",
         modelID, relLevel, tostring(classification), sex, tostring(classToken), powerType)
