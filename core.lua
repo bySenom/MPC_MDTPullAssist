@@ -154,9 +154,19 @@ function PA:ReloadRoute()
     return success
 end
 
--- Event frame
+-- Event frame: register ALL events at file load time to avoid
+-- ADDON_ACTION_FORBIDDEN when /reload happens during combat lockdown.
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
+eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+eventFrame:RegisterEvent("CHALLENGE_MODE_START")
+eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
+eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
+eventFrame:RegisterEvent("SCENARIO_CRITERIA_UPDATE")
+eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 
 local function OnAddonLoaded(addonName)
     if addonName ~= ADDON_NAME then return end
@@ -166,8 +176,6 @@ local function OnAddonLoaded(addonName)
 
     -- Enable immediately
     PA:OnEnable()
-
-    eventFrame:UnregisterEvent("ADDON_LOADED")
 end
 
 -- Called when the addon is enabled
@@ -185,9 +193,6 @@ function PA:OnEnable()
     -- Initialize tracker
     self.Tracker:Init()
 
-    -- Register game events
-    self:RegisterEvents()
-
     -- Apply saved threshold
     local settings = self:GetSettings()
     if settings.threshold then
@@ -200,18 +205,6 @@ function PA:OnEnable()
     end)
 
     PA:Debug("Enabled, v" .. PA.VERSION)
-end
-
-function PA:RegisterEvents()
-    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    eventFrame:RegisterEvent("CHALLENGE_MODE_START")
-    eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
-    eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
-    eventFrame:RegisterEvent("SCENARIO_CRITERIA_UPDATE")
-    eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-    eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 end
 
 -- Auto-load route when entering a dungeon
@@ -284,8 +277,13 @@ end
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
         OnAddonLoaded(...)
+        return
+    end
 
-    elseif event == "PLAYER_ENTERING_WORLD" then
+    -- Ignore all other events until fully initialized
+    if not enabled then return end
+
+    if event == "PLAYER_ENTERING_WORLD" then
         C_Timer.After(2, function()
             PA:TryAutoLoad()
         end)
