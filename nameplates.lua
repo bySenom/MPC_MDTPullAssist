@@ -131,9 +131,46 @@ function Nameplates:FindNameFontString(nameplate)
             return nameplate.unitFrame.healthBar.actorName
         end
     end
+    -- Platynator: iterate children to find display frame with widgets[]
+    local platynatorName = self:FindPlatynatorWidget(nameplate, "creatureName")
+    if platynatorName and platynatorName.text then
+        return platynatorName.text
+    end
     -- Blizzard default / ElvUI / others (uppercase UnitFrame)
     if nameplate.UnitFrame and nameplate.UnitFrame.name then
         return nameplate.UnitFrame.name
+    end
+    return nil
+end
+
+-- Find a Platynator widget by details.kind on a nameplate
+function Nameplates:FindPlatynatorWidget(nameplate, kind)
+    for _, child in pairs({nameplate:GetChildren()}) do
+        if child ~= nameplate.UnitFrame and child.widgets then
+            for _, w in ipairs(child.widgets) do
+                if w.details and w.details.kind == kind then
+                    return w
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- Find the health bar frame for anchoring
+function Nameplates:FindHealthBar(nameplate)
+    -- Plater
+    if nameplate.unitFrame and nameplate.unitFrame.healthBar then
+        return nameplate.unitFrame.healthBar
+    end
+    -- Platynator: health widget → statusBar
+    local healthWidget = self:FindPlatynatorWidget(nameplate, "health")
+    if healthWidget and healthWidget.statusBar then
+        return healthWidget.statusBar
+    end
+    -- Blizzard default
+    if nameplate.UnitFrame and nameplate.UnitFrame.healthBar then
+        return nameplate.UnitFrame.healthBar
     end
     return nil
 end
@@ -255,14 +292,9 @@ end
 function Nameplates:AnchorOverlay(overlay, nameplate)
     overlay.text:ClearAllPoints()
 
-    -- Plater
-    if nameplate.unitFrame and nameplate.unitFrame.healthBar then
-        overlay.text:SetPoint("BOTTOM", nameplate.unitFrame.healthBar, "TOP", 0, 14)
-        return
-    end
-    -- Blizzard default
-    if nameplate.UnitFrame and nameplate.UnitFrame.healthBar then
-        overlay.text:SetPoint("BOTTOM", nameplate.UnitFrame.healthBar, "TOP", 0, 14)
+    local healthBar = self:FindHealthBar(nameplate)
+    if healthBar then
+        overlay.text:SetPoint("BOTTOM", healthBar, "TOP", 0, 14)
         return
     end
     -- Fallback
