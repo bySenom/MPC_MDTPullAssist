@@ -14,7 +14,40 @@ local ADDON_NAME, NS = ...
 local PA = {}
 NS.PullAssist = PA
 
-PA.VERSION = "1.0.0"
+PA.VERSION = "1.1.0"
+
+-- Keybind header and names (must be globals for WoW Key Bindings UI)
+BINDING_HEADER_MDTPULLASSIST = "MDT Pull Assist"
+BINDING_NAME_MDTPA_TOGGLE_FRAME = "Toggle Pull Assist Frame"
+BINDING_NAME_MDTPA_NEXT_PULL = "Next Pull"
+BINDING_NAME_MDTPA_PREV_PULL = "Previous Pull"
+
+-- Global keybind functions (called from Bindings.xml)
+function PA_ToggleFrame()
+    if PA.Display then
+        local frame = PA.Display:GetFrame()
+        if frame and frame:IsShown() then
+            PA.Display:SetShown(false)
+        else
+            PA.Display:SetShown(true)
+            PA.Display:Update()
+        end
+    end
+end
+
+function PA_NextPull()
+    if PA.Tracker then
+        local idx = PA.Tracker:GetCurrentPullIndex()
+        PA.Tracker:SetCurrentPull(idx + 1)
+    end
+end
+
+function PA_PrevPull()
+    if PA.Tracker then
+        local idx = PA.Tracker:GetCurrentPullIndex()
+        if idx > 1 then PA.Tracker:SetCurrentPull(idx - 1) end
+    end
+end
 
 -- Sub-modules (populated by other files via NS.PullAssist)
 PA.Mapping = PA.Mapping or {}
@@ -198,6 +231,7 @@ eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+eventFrame:RegisterEvent("CHAT_MSG_ADDON")
 
 local function OnAddonLoaded(addonName)
     if addonName ~= ADDON_NAME then return end
@@ -230,6 +264,45 @@ function PA:OnEnable()
         self.Tracker:SetThreshold(settings.threshold)
     end
 
+    -- Minimap button (LibDataBroker + LibDBIcon, bundled by MDT)
+    if LibStub then
+        local LDB = LibStub("LibDataBroker-1.1", true)
+        local LDBIcon = LibStub("LibDBIcon-1.0", true)
+        if LDB and LDBIcon then
+            if not settings.minimap then settings.minimap = {} end
+            local dataObj = LDB:NewDataObject("MDTPullAssist", {
+                type = "data source",
+                text = "Pull Assist",
+                icon = "Interface\\Icons\\INV_Misc_Map_01",
+                OnClick = function(_, button)
+                    if button == "LeftButton" then
+                        PA_ToggleFrame()
+                    elseif button == "RightButton" then
+                        PA.Options:Toggle()
+                    end
+                end,
+                OnTooltipShow = function(tt)
+                    tt:AddLine("|cFF66CCFFMDT Pull Assist|r")
+                    local plan = PA.RouteReader:GetPlan()
+                    if plan then
+                        tt:AddLine(plan.routeName, 0.85, 0.85, 0.85)
+                        local idx = PA.Tracker:GetCurrentPullIndex()
+                        tt:AddLine(string.format("Pull %d / %d", idx, #plan.pulls), 0.55, 0.55, 0.6)
+                    else
+                        tt:AddLine("No route loaded", 0.55, 0.55, 0.6)
+                    end
+                    tt:AddLine(" ")
+                    tt:AddLine("|cFFAAAAAALeft-click:|r Toggle frame", 0.8, 0.8, 0.8)
+                    tt:AddLine("|cFFAAAAAARight-click:|r Options", 0.8, 0.8, 0.8)
+                end,
+            })
+            LDBIcon:Register("MDTPullAssist", dataObj, settings.minimap)
+        end
+    end
+
+    -- Initialize party sync
+    self:InitPartySync()
+
     -- Try loading route immediately if in a dungeon
     C_Timer.After(1, function()
         PA:TryAutoLoad()
@@ -254,6 +327,70 @@ function PA:TryAutoLoad()
     self.Display:UpdateVisibility()
 end
 
+----------------------------------------------------------------
+-- Party Sync (addon comms)
+----------------------------------------------------------------
+local COMM_PREFIX = "MDTPA"
+local partyPulls = {}           -- [playerName] = pullIdx
+local lastBroadcastTime = 0
+local BROADCAST_THROTTLE = 5    -- seconds
+
+function PA:InitPartySync()
+    if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+        C_ChatInfo.RegisterAddonMessagePrefix(COMM_PREFIX)
+    end
+end
+
+function PA:BroadcastPull(pullIdx)
+    local settings = self:GetSettings()
+    if settings.partySyncEnabled == false then return end
+    if not IsInGroup() then return end
+
+    local now = GetTime()
+    if (now - lastBroadcastTime) < BROADCAST_THROTTLE then return end
+    lastBroadcastTime = now
+
+    local channel = IsInGroup(2) and "INSTANCE_CHAT" or (IsInRaid() and "RAID" or "PARTY")
+    local msg = "PULL:" .. tostring(pullIdx)
+    C_ChatInfo.SendAddonMessage(COMM_PREFIX, msg, channel)
+    self:Debug("Party sync: broadcast pull", pullIdx, "to", channel)
+end
+
+function PA:OnPartySyncReceived(prefix, msg, channel, sender)
+    if prefix ~= COMM_PREFIX then return end
+    local settings = self:GetSettings()
+    if settings.partySyncEnabled == false then return end
+
+    -- Ignore our own messages
+    sender = Ambiguate(sender, "none")
+    local myName = UnitName("player")
+    if sender == myName then return end
+
+    local cmd, value = strsplit(":", msg, 2)
+    if cmd == "PULL" then
+        local pullIdx = tonumber(value)
+        if pullIdx then
+            partyPulls[sender] = pullIdx
+            self:UpdatePartySyncDisplay()
+        end
+    end
+end
+
+function PA:UpdatePartySyncDisplay()
+    local myPull = self.Tracker:GetCurrentPullIndex()
+    local mismatches = {}
+    for name, pullIdx in pairs(partyPulls) do
+        if pullIdx ~= myPull then
+            mismatches[#mismatches + 1] = string.format("%s: Pull %d", name, pullIdx)
+        end
+    end
+    if #mismatches > 0 then
+        self.Display:UpdatePartySync("⚠ " .. table.concat(mismatches, ", "))
+    else
+        self.Display:UpdatePartySync(nil)
+    end
+end
+
 -- Combat log handler for mob death tracking
 local function HandleCombatLog()
     local _, subEvent, _, _, _, _, _, destGUID = CombatLogGetCurrentEventInfo()
@@ -272,6 +409,19 @@ local function HandleCombatLog()
 
     if npcID then
         PA.Tracker:OnMobDeath(npcID)
+
+        -- Off-route warning: if this npcID is not in any route pull
+        local settings = PA:GetSettings()
+        if settings.warnOffRoute ~= false and PA.RouteReader:HasRoute() then
+            if not PA.Tracker:IsNpcInRoute(npcID) then
+                -- Try to get mob name from combat log
+                local _, _, _, _, _, _, _, _, destName = CombatLogGetCurrentEventInfo()
+                local mobName = destName
+                if mobName and isSecretValue(mobName) then mobName = nil end
+                PA.Display:ShowOffRouteWarning(mobName)
+                PA:Debug("Off-route mob killed:", mobName or "?", "npcID:", npcID)
+            end
+        end
     else
         -- GUID parsing failed (secret value) - try MPC fingerprint system
         -- We can't resolve fingerprints from a GUID alone, but scenario updates
@@ -351,6 +501,9 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         C_Timer.After(1, function()
             PA:TryAutoLoad()
         end)
+
+    elseif event == "CHAT_MSG_ADDON" then
+        PA:OnPartySyncReceived(...)
     end
 end)
 

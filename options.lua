@@ -111,7 +111,7 @@ function Options:CreatePanel()
     local settings = PA:GetSettings()
 
     optionsFrame = CreateFrame("Frame", "MPCPullAssistOptions", UIParent, "BackdropTemplate")
-    optionsFrame:SetSize(340, 580)
+    optionsFrame:SetSize(340, 680)
     optionsFrame:SetPoint("CENTER")
     optionsFrame:SetFrameStrata("DIALOG")
     optionsFrame:SetMovable(true)
@@ -204,6 +204,32 @@ function Options:CreatePanel()
         function() return PA.Tracker:GetThreshold() end,
         function(v) PA.Tracker:SetThreshold(v); settings.threshold = v end)
     yOff = yOff - 50
+
+    -- Alerts section
+    CreateSectionHeader(content, "Alerts", yOff)
+    yOff = yOff - 30
+
+    CreateCheckbox(content, "Warn on off-route pulls", 16, yOff,
+        function() return settings.warnOffRoute ~= false end,
+        function(v) settings.warnOffRoute = v end)
+    yOff = yOff - 26
+
+    CreateCheckbox(content, "Enable party sync", 16, yOff,
+        function() return settings.partySyncEnabled ~= false end,
+        function(v) settings.partySyncEnabled = v end)
+    yOff = yOff - 26
+
+    CreateCheckbox(content, "Hide minimap icon", 16, yOff,
+        function() return settings.minimap and settings.minimap.hide or false end,
+        function(v)
+            if not settings.minimap then settings.minimap = {} end
+            settings.minimap.hide = v
+            if LibStub and LibStub("LibDBIcon-1.0", true) then
+                local icon = LibStub("LibDBIcon-1.0")
+                if v then icon:Hide("MDTPullAssist") else icon:Show("MDTPullAssist") end
+            end
+        end)
+    yOff = yOff - 36
 
     -- Actions section
     CreateSectionHeader(content, "Actions", yOff)

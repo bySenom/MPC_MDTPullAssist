@@ -13,11 +13,26 @@ PA.Tracker = Tracker
 -- State
 local currentPullIdx = 1          -- index into route plan
 local pullStates = {}             -- [pullIdx] = "pending" | "active" | "complete"
-local deadNpcCounts = {}          -- [npcID] = number of kills
+local deadNpcCounts = {}          -- [npcID] = number of kills (global)
 local lastCompletedPct = 0        -- last known scenario completion %
 local initialized = false
+local offRouteNpcIDs = {}         -- [npcID] = true, mobs killed that aren't in any route pull
 
 local COMPLETION_THRESHOLD = 0.90  -- 90% of pull forces → consider pull done
+
+-- Build consumed counts: how many kills of each npcID are "used up" by completed pulls
+-- (ordered by pull index so earlier pulls consume first)
+local function BuildConsumedCounts(plan)
+    local consumed = {}
+    for i = 1, #plan.pulls do
+        if pullStates[i] == "complete" then
+            for _, mob in ipairs(plan.pulls[i].mobs) do
+                consumed[mob.npcID] = (consumed[mob.npcID] or 0) + mob.quantity
+            end
+        end
+    end
+    return consumed
+end
 
 function Tracker:Init()
     initialized = true
@@ -27,6 +42,7 @@ function Tracker:Reset()
     currentPullIdx = 1
     wipe(pullStates)
     wipe(deadNpcCounts)
+    wipe(offRouteNpcIDs)
     lastCompletedPct = 0
 
     local plan = PA.RouteReader:GetPlan()
@@ -76,6 +92,25 @@ end
 function Tracker:OnMobDeath(npcID)
     if not npcID or npcID <= 0 then return end
     deadNpcCounts[npcID] = (deadNpcCounts[npcID] or 0) + 1
+
+    -- Track off-route kills
+    local plan = PA.RouteReader:GetPlan()
+    if plan then
+        local isInRoute = false
+        for _, pull in ipairs(plan.pulls) do
+            for _, mob in ipairs(pull.mobs) do
+                if mob.npcID == npcID then
+                    isInRoute = true
+                    break
+                end
+            end
+            if isInRoute then break end
+        end
+        if not isInRoute then
+            offRouteNpcIDs[npcID] = true
+        end
+    end
+
     self:EvaluatePulls()
 end
 
@@ -95,12 +130,10 @@ function Tracker:EvaluatePulls()
     local changed = false
 
     -- Strategy 1: Forces-based sequential advancement
-    -- Find the highest pull index where cumulative forces ≤ completed scenario forces
     if completedPct > lastCompletedPct then
         lastCompletedPct = completedPct
         for i = 1, #plan.pulls do
             local pull = plan.pulls[i]
-            -- If scenario progress has passed this pull's cumulative threshold
             if pullStates[i] ~= "complete" and completedPct >= (pull.cumPercent * COMPLETION_THRESHOLD) then
                 pullStates[i] = "complete"
                 changed = true
@@ -108,8 +141,11 @@ function Tracker:EvaluatePulls()
         end
     end
 
-    -- Strategy 2: NPC death tracking for precise pull matching
-    -- A pull is complete if we've killed enough of its specific mobs
+    -- Strategy 2: NPC death tracking with consumed-kill deduction
+    -- Rebuild consumed counts from currently-complete pulls so that
+    -- kills "used" by earlier pulls don't satisfy later ones.
+    local consumed = BuildConsumedCounts(plan)
+
     for i = 1, #plan.pulls do
         if pullStates[i] ~= "complete" then
             local pull = plan.pulls[i]
@@ -118,33 +154,42 @@ function Tracker:EvaluatePulls()
                 -- Boss pull or zero-forces pull → mark complete if any mob died
                 local anyDead = false
                 for _, mob in ipairs(pull.mobs) do
-                    if (deadNpcCounts[mob.npcID] or 0) > 0 then
+                    local totalKilled = deadNpcCounts[mob.npcID] or 0
+                    local usedByOthers = consumed[mob.npcID] or 0
+                    if (totalKilled - usedByOthers) > 0 then
                         anyDead = true
                         break
                     end
                 end
                 if anyDead then
                     pullStates[i] = "complete"
+                    -- Update consumed so subsequent pulls account for this pull's mobs
+                    for _, mob in ipairs(pull.mobs) do
+                        consumed[mob.npcID] = (consumed[mob.npcID] or 0) + mob.quantity
+                    end
                     changed = true
                 end
             else
                 local achievedForces = 0
                 for _, mob in ipairs(pull.mobs) do
-                    local killed = deadNpcCounts[mob.npcID] or 0
-                    -- Cap at expected quantity to avoid over-counting
-                    local countForPull = math.min(killed, mob.quantity)
+                    local totalKilled = deadNpcCounts[mob.npcID] or 0
+                    local usedByOthers = consumed[mob.npcID] or 0
+                    local available = math.max(0, totalKilled - usedByOthers)
+                    local countForPull = math.min(available, mob.quantity)
                     achievedForces = achievedForces + (countForPull * mob.count)
                 end
 
                 if achievedForces >= (expectedForces * COMPLETION_THRESHOLD) then
                     pullStates[i] = "complete"
+                    for _, mob in ipairs(pull.mobs) do
+                        consumed[mob.npcID] = (consumed[mob.npcID] or 0) + mob.quantity
+                    end
                     changed = true
                 end
             end
         end
     end
 
-    -- Advance currentPullIdx to next non-complete pull
     if changed then
         self:AdvanceCurrentPull()
     end
@@ -217,4 +262,52 @@ function Tracker:CompletePull(pullIdx)
     pullStates[pullIdx] = "complete"
     PA:Debug("Manually completed pull", pullIdx)
     self:AdvanceCurrentPull()
+end
+
+-- Get per-mob kill progress for a specific pull (consumed-aware)
+function Tracker:GetMobKillsForPull(pullIdx)
+    local plan = PA.RouteReader:GetPlan()
+    if not plan then return nil end
+    local pull = plan.pulls[pullIdx]
+    if not pull then return nil end
+
+    local consumed = BuildConsumedCounts(plan)
+    -- Don't count this pull's own consumption if it's complete
+    -- (consumed already includes it, but we want "available before this pull")
+    if pullStates[pullIdx] == "complete" then
+        for _, mob in ipairs(pull.mobs) do
+            consumed[mob.npcID] = math.max(0, (consumed[mob.npcID] or 0) - mob.quantity)
+        end
+    end
+
+    local result = {}
+    for _, mob in ipairs(pull.mobs) do
+        local totalKilled = deadNpcCounts[mob.npcID] or 0
+        local usedByOthers = consumed[mob.npcID] or 0
+        local available = math.max(0, totalKilled - usedByOthers)
+        result[mob.npcID] = {
+            killed = math.min(available, mob.quantity),
+            expected = mob.quantity,
+        }
+        -- Consume this pull's share so the next mob entry with same npcID is correct
+        consumed[mob.npcID] = usedByOthers + mob.quantity
+    end
+    return result
+end
+
+-- Check if a given npcID is in any route pull
+function Tracker:IsNpcInRoute(npcID)
+    local plan = PA.RouteReader:GetPlan()
+    if not plan then return false end
+    for _, pull in ipairs(plan.pulls) do
+        for _, mob in ipairs(pull.mobs) do
+            if mob.npcID == npcID then return true end
+        end
+    end
+    return false
+end
+
+-- Get table of off-route npcIDs that have died
+function Tracker:GetOffRouteKills()
+    return offRouteNpcIDs
 end

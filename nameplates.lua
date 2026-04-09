@@ -23,12 +23,16 @@ local npcPullMap = {}           -- [npcID] = { pullIndices sorted }
 local modelFrame = nil          -- hidden PlayerModel for fingerprinting
 local learnedFingerprints = {}  -- [fingerprint] = npcID
 local mpcFingerprints = {}      -- [fingerprint] = npcID (loaded from MythicPlusCountDB)
+local deathTimers = {}          -- [nameplate] = timer handle for death flash
+local pendingRetry = {}         -- [nameplate] = timer handle for failed ID retry
+local allRouteNpcIDs = {}       -- [npcID] = true, all NPCs in current route
 
 -- Colors per pull proximity
 local PULL_COLORS = {
     current  = { 0.20, 1.00, 0.30, 1.0 },  -- bright green
     upcoming = { 1.00, 0.82, 0.00, 0.9 },  -- yellow (next 1-2)
     future   = { 0.55, 0.55, 0.60, 0.7 },  -- gray (distant)
+    offroute = { 0.95, 0.25, 0.25, 1.0 },  -- red
 }
 
 ----------------------------------------------------------------
@@ -55,6 +59,7 @@ end
 function Nameplates:BuildLookups()
     wipe(nameLookup)
     wipe(npcPullMap)
+    wipe(allRouteNpcIDs)
 
     local plan = PA.RouteReader:GetPlan()
     if not plan then
@@ -69,6 +74,7 @@ function Nameplates:BuildLookups()
                 nameLookup[mob.name] = mob.npcID
             end
             if mob.npcID then
+                allRouteNpcIDs[mob.npcID] = true
                 if not npcPullMap[mob.npcID] then
                     npcPullMap[mob.npcID] = {}
                     npcCount = npcCount + 1
@@ -409,8 +415,21 @@ function Nameplates:UpdateNameplate(nameplate, unit)
     -- Only process enemy NPCs
     if not UnitCanAttack("player", unit) then return end
     if UnitIsPlayer(unit) then return end
+
+    -- Death flash: show green checkmark briefly, then remove
     if UnitIsDead(unit) then
-        self:RemoveOverlay(nameplate)
+        if deathTimers[nameplate] then return end  -- already flashing
+        local overlay = overlays[nameplate]
+        if overlay and overlay:IsShown() then
+            overlay.text:SetText("✓")
+            overlay.text:SetTextColor(0.30, 1.00, 0.40, 1.0)
+            deathTimers[nameplate] = C_Timer.After(1.5, function()
+                self:RemoveOverlay(nameplate)
+                deathTimers[nameplate] = nil
+            end)
+        else
+            self:RemoveOverlay(nameplate)
+        end
         return
     end
 
@@ -420,20 +439,46 @@ function Nameplates:UpdateNameplate(nameplate, unit)
         return
     end
     if not PA.RouteReader:HasRoute() then
-        PA:Debug("Nameplates: no route loaded for", UnitName(unit) or "?")
         return
     end
 
     local npcID = self:IdentifyUnit(unit)
     if not npcID then
-        PA:Debug("Nameplates: could not identify", UnitName(unit) or "?", "- GUID:", UnitGUID(unit) or "nil")
+        -- Schedule one retry in 2s for late model loading
+        if not pendingRetry[nameplate] then
+            pendingRetry[nameplate] = C_Timer.After(2, function()
+                pendingRetry[nameplate] = nil
+                if UnitExists(unit) then
+                    local np = C_NamePlate.GetNamePlateForUnit(unit)
+                    if np then self:UpdateNameplate(np, unit) end
+                end
+            end)
+        end
         self:RemoveOverlay(nameplate)
+        return
+    end
+    -- Cancel pending retry since we identified successfully
+    if pendingRetry[nameplate] then
+        pendingRetry[nameplate]:Cancel()
+        pendingRetry[nameplate] = nil
+    end
+
+    -- Off-route detection: mob is identified but not in any route pull
+    if not allRouteNpcIDs[npcID] then
+        if settings.warnOffRoute ~= false and UnitThreatSituation("player", unit) then
+            local overlay = self:GetOrCreateOverlay(nameplate)
+            self:AnchorOverlay(overlay, nameplate)
+            overlay.text:SetText("OFF ROUTE")
+            overlay.text:SetTextColor(unpack(PULL_COLORS.offroute))
+            overlay:Show()
+        else
+            self:RemoveOverlay(nameplate)
+        end
         return
     end
 
     local info = self:GetPullInfoForNpc(npcID)
     if not info then
-        PA:Debug("Nameplates: npcID", npcID, "not in any upcoming pull")
         self:RemoveOverlay(nameplate)
         return
     end
@@ -468,6 +513,16 @@ end
 function Nameplates:RemoveOverlay(nameplate)
     local overlay = overlays[nameplate]
     if overlay then overlay:Hide() end
+    -- Cancel death flash timer
+    if deathTimers[nameplate] then
+        deathTimers[nameplate]:Cancel()
+        deathTimers[nameplate] = nil
+    end
+    -- Cancel pending retry
+    if pendingRetry[nameplate] then
+        pendingRetry[nameplate]:Cancel()
+        pendingRetry[nameplate] = nil
+    end
 end
 
 ----------------------------------------------------------------
@@ -501,7 +556,6 @@ end
 -- Event handling
 ----------------------------------------------------------------
 local npFrame = CreateFrame("Frame")
-local refreshTicker = nil
 
 function Nameplates:RegisterEvents()
     npFrame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
@@ -520,11 +574,6 @@ function Nameplates:RegisterEvents()
             end
         end
     end)
-
-    -- Periodic refresh to catch late fingerprinting / model loading
-    refreshTicker = C_Timer.NewTicker(3.0, function()
-        if PA.RouteReader:HasRoute() then
-            Nameplates:RefreshAll()
-        end
-    end)
+    -- No periodic ticker: per-nameplate retry (pendingRetry) handles late fingerprinting.
+    -- Route and tracking changes trigger RefreshAll() via callbacks.
 end

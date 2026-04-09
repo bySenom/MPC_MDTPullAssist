@@ -15,6 +15,11 @@ local progressText = nil
 local noRouteText = nil
 local flashAnim = nil
 local unlockGlow = nil
+local progressBar = nil     -- forces progress bar
+local progressBarText = nil
+local warningText = nil     -- off-route warning
+local warningTimer = nil
+local partySyncText = nil   -- party sync indicator
 
 local MAX_MOB_LINES = 12
 local FRAME_WIDTH = 220
@@ -106,6 +111,45 @@ function Display:CreateFrame()
     routeText:SetTextColor(unpack(C.textDim))
     routeText:SetPoint("TOPLEFT", PADDING, -(HEADER_HEIGHT + 2))
     routeText:SetText("")
+
+    -- Forces progress bar (below route name)
+    progressBar = CreateFrame("StatusBar", nil, mainFrame)
+    progressBar:SetPoint("TOPLEFT", PADDING, -(HEADER_HEIGHT + 12))
+    progressBar:SetPoint("RIGHT", mainFrame, "RIGHT", -PADDING, 0)
+    progressBar:SetHeight(8)
+    progressBar:SetMinMaxValues(0, 100)
+    progressBar:SetValue(0)
+    progressBar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+    progressBar:SetStatusBarColor(0.30, 0.85, 0.40, 0.9)
+
+    local barBg = progressBar:CreateTexture(nil, "BACKGROUND")
+    barBg:SetAllPoints()
+    barBg:SetColorTexture(0.15, 0.15, 0.18, 1.0)
+
+    progressBarText = progressBar:CreateFontString(nil, "OVERLAY")
+    progressBarText:SetFont("Fonts\\FRIZQT__.TTF", 7, "OUTLINE")
+    progressBarText:SetTextColor(1, 1, 1, 0.9)
+    progressBarText:SetPoint("CENTER", 0, 0)
+    progressBarText:SetText("")
+    progressBar:Hide()
+
+    -- Off-route warning text (above mob list, hidden by default)
+    warningText = mainFrame:CreateFontString(nil, "OVERLAY")
+    warningText:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+    warningText:SetTextColor(0.95, 0.30, 0.30, 1.0)
+    warningText:SetPoint("TOPLEFT", PADDING, -(HEADER_HEIGHT + 22))
+    warningText:SetPoint("RIGHT", mainFrame, "RIGHT", -PADDING, 0)
+    warningText:SetJustifyH("CENTER")
+    warningText:SetText("")
+    warningText:Hide()
+
+    -- Party sync indicator (below warning, hidden by default)
+    partySyncText = mainFrame:CreateFontString(nil, "OVERLAY")
+    partySyncText:SetFont("Fonts\\FRIZQT__.TTF", 9, "")
+    partySyncText:SetTextColor(1.0, 0.82, 0.0, 0.9)
+    partySyncText:SetJustifyH("CENTER")
+    partySyncText:SetText("")
+    partySyncText:Hide()
 
     -- "No route loaded" text
     noRouteText = mainFrame:CreateFontString(nil, "OVERLAY")
@@ -203,6 +247,29 @@ function Display:Update()
 
     noRouteText:Hide()
 
+    -- Update forces progress bar
+    local rawCount, total = PA:ReadEnemyForcesRaw()
+    if total > 0 then
+        local pct = (rawCount / total) * 100
+        progressBar:SetValue(pct)
+        progressBarText:SetText(string.format("%d/%d (%.1f%%)", rawCount, total, pct))
+        progressBar:Show()
+    elseif PA:IsDebugMode() or not PA:IsInMythicPlus() then
+        -- Outside M+: show cumulative route % through current pull
+        local pullIdx = PA.Tracker:GetCurrentPullIndex()
+        local pull = plan.pulls[pullIdx]
+        if pull then
+            progressBar:SetValue(pull.cumPercent)
+            progressBarText:SetText(string.format("Route: %.1f%%", pull.cumPercent))
+        else
+            progressBar:SetValue(100)
+            progressBarText:SetText("Route: 100%")
+        end
+        progressBar:Show()
+    else
+        progressBar:Hide()
+    end
+
     local pullIdx = PA.Tracker:GetCurrentPullIndex()
     local pull = plan.pulls[pullIdx]
 
@@ -221,25 +288,52 @@ function Display:Update()
     progressText:SetText(string.format("%d/%d", pullIdx - 1, #plan.pulls))
     routeText:SetText(plan.routeName)
 
+    -- Get per-mob kill data for current pull
+    local mobKills = PA.Tracker:GetMobKillsForPull(pullIdx)
+
     -- Mob lines
     local settings = PA:GetSettings()
     local showCount = settings.showCount ~= false
     local showPercent = settings.showPercent ~= false
     local lineCount = 0
+    local MOB_TOP_OFFSET = HEADER_HEIGHT + 24  -- shifted down for progress bar
 
     for i, mob in ipairs(pull.mobs) do
         if i > MAX_MOB_LINES then break end
         lineCount = i
         local line = mobLines[i]
 
-        -- Name with quantity prefix
+        -- Check kill progress
+        local killInfo = mobKills and mobKills[mob.npcID]
+        local killed = killInfo and killInfo.killed or 0
+        local expected = killInfo and killInfo.expected or mob.quantity
+        local isComplete = killed >= expected and expected > 0
+
+        -- Name with quantity prefix and kill progress
         local nameStr
         if mob.quantity > 1 then
-            nameStr = string.format("|cFFCCCCCC%d×|r %s", mob.quantity, mob.name)
+            if isComplete then
+                nameStr = string.format("|cFF666666✓ %d× %s|r", mob.quantity, mob.name)
+            elseif killed > 0 then
+                nameStr = string.format("|cFFCCCCCC%d×|r %s |cFFFFCC00(%d/%d)|r", mob.quantity, mob.name, killed, expected)
+            else
+                nameStr = string.format("|cFFCCCCCC%d×|r %s", mob.quantity, mob.name)
+            end
         else
-            nameStr = mob.name
+            if isComplete then
+                nameStr = string.format("|cFF666666✓ %s|r", mob.name)
+            else
+                nameStr = mob.name
+            end
         end
         line.name:SetText(nameStr)
+
+        -- Text color: dim for completed mobs
+        if isComplete then
+            line.name:SetTextColor(0.4, 0.4, 0.4, 0.7)
+        else
+            line.name:SetTextColor(unpack(C.textNormal))
+        end
 
         -- Forces display
         local forcesStr = ""
@@ -255,15 +349,17 @@ function Display:Update()
         end
 
         if mob.isBoss then
-            line.forces:SetTextColor(1.0, 0.82, 0.0, 1.0)  -- gold for bosses
+            line.forces:SetTextColor(1.0, 0.82, 0.0, 1.0)
             if totalMobForces == 0 then forcesStr = "BOSS" end
+        elseif isComplete then
+            line.forces:SetTextColor(0.4, 0.4, 0.4, 0.7)
         else
             line.forces:SetTextColor(unpack(C.green))
         end
         line.forces:SetText(forcesStr)
 
-        -- Position
-        local yOff = -(HEADER_HEIGHT + 14 + (i - 1) * LINE_HEIGHT)
+        -- Position (shifted down for progress bar)
+        local yOff = -(MOB_TOP_OFFSET + (i - 1) * LINE_HEIGHT)
         line.name:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", PADDING, yOff)
         line.name:SetPoint("RIGHT", line.forces, "LEFT", -4, 0)
         line.forces:SetPoint("TOPRIGHT", mainFrame, "TOPRIGHT", -PADDING, yOff)
@@ -282,7 +378,7 @@ function Display:Update()
     local summaryIdx = lineCount + 1
     if summaryIdx <= MAX_MOB_LINES then
         local line = mobLines[summaryIdx]
-        local yOff = -(HEADER_HEIGHT + 14 + lineCount * LINE_HEIGHT + 4)
+        local yOff = -(MOB_TOP_OFFSET + lineCount * LINE_HEIGHT + 4)
         line.name:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", PADDING, yOff)
         line.name:SetPoint("RIGHT", line.forces, "LEFT", -4, 0)
         line.forces:SetPoint("TOPRIGHT", mainFrame, "TOPRIGHT", -PADDING, yOff)
@@ -320,6 +416,9 @@ function Display:ShowNoRoute()
     headerText:SetText("MDT Pull Assist")
     progressText:SetText("")
     routeText:SetText("")
+    if progressBar then progressBar:Hide() end
+    if warningText then warningText:Hide() end
+    if partySyncText then partySyncText:Hide() end
     self:HideAllMobLines()
     self:ResizeFrame(0)
 end
@@ -333,7 +432,8 @@ end
 
 function Display:ResizeFrame(lineCount)
     if not mainFrame then return end
-    local height = HEADER_HEIGHT + 14 + math.max(lineCount, 1) * LINE_HEIGHT + PADDING + 4
+    -- Extra 10px for progress bar
+    local height = HEADER_HEIGHT + 24 + math.max(lineCount, 1) * LINE_HEIGHT + PADDING + 4
     height = math.max(height, FRAME_MIN_HEIGHT)
     mainFrame:SetHeight(height)
 end
@@ -342,6 +442,8 @@ end
 function Display:OnPullAdvanced(newIdx)
     if flashAnim then flashAnim:Play() end
     self:Update()
+    -- Broadcast pull to party
+    PA:BroadcastPull(newIdx)
 end
 
 function Display:OnAllPullsComplete()
@@ -411,4 +513,33 @@ end
 
 function Display:GetFrame()
     return mainFrame
+end
+
+-- Show a temporary off-route warning on the display frame
+function Display:ShowOffRouteWarning(mobName)
+    if not mainFrame or not warningText then return end
+    local label = mobName and ("⚠ Off-route: " .. mobName .. "!") or "⚠ Off-route mob!"
+    warningText:SetText(label)
+    warningText:Show()
+
+    -- Auto-dismiss after 5 seconds
+    if warningTimer then warningTimer:Cancel() end
+    warningTimer = C_Timer.NewTimer(5, function()
+        if warningText then warningText:Hide() end
+        warningTimer = nil
+    end)
+end
+
+-- Update party sync indicator text
+function Display:UpdatePartySync(text)
+    if not mainFrame or not partySyncText then return end
+    if text and text ~= "" then
+        partySyncText:SetText(text)
+        partySyncText:ClearAllPoints()
+        partySyncText:SetPoint("BOTTOMLEFT", mainFrame, "BOTTOMLEFT", PADDING, 2)
+        partySyncText:SetPoint("RIGHT", mainFrame, "RIGHT", -PADDING, 0)
+        partySyncText:Show()
+    else
+        partySyncText:Hide()
+    end
 end
