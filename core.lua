@@ -157,10 +157,10 @@ end
 -- Event frame
 local eventFrame = CreateFrame("Frame")
 
--- RegisterEvent is protected during combat lockdown (/reload in combat).
--- Check InCombatLockdown() BEFORE calling to avoid ADDON_ACTION_FORBIDDEN
--- (pcall does NOT prevent the taint event from firing).
-local pendingEvents = {}
+-- RegisterEvent() is protected during /reload in combat.
+-- InCombatLockdown() returns false during addon load even when protected.
+-- NEVER call RegisterEvent at file load time. Instead, defer to OnUpdate
+-- which fires on the next rendered frame when the frame system is safe.
 local allEvents = {
     "ADDON_LOADED",
     "PLAYER_ENTERING_WORLD",
@@ -174,32 +174,22 @@ local allEvents = {
     "ZONE_CHANGED_NEW_AREA",
 }
 
-local function RegisterAllPendingEvents()
-    if InCombatLockdown() then return false end
-    for event in pairs(pendingEvents) do
-        eventFrame:RegisterEvent(event)
-        pendingEvents[event] = nil
+local eventsRegistered = false
+eventFrame:SetScript("OnUpdate", function(self)
+    if InCombatLockdown() then return end
+    for _, event in ipairs(allEvents) do
+        self:RegisterEvent(event)
     end
-    return not next(pendingEvents)
-end
+    eventsRegistered = true
+    self:SetScript("OnUpdate", nil)
 
--- Register immediately if out of combat, otherwise defer everything
-if not InCombatLockdown() then
-    for _, event in ipairs(allEvents) do
-        eventFrame:RegisterEvent(event)
+    -- We may have missed ADDON_LOADED, trigger init manually
+    if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(ADDON_NAME) then
+        OnAddonLoaded(ADDON_NAME)
+    elseif IsAddOnLoaded and IsAddOnLoaded(ADDON_NAME) then
+        OnAddonLoaded(ADDON_NAME)
     end
-else
-    for _, event in ipairs(allEvents) do
-        pendingEvents[event] = true
-    end
-    -- Poll until combat ends, then register
-    C_Timer.NewTicker(1, function(ticker)
-        if not InCombatLockdown() then
-            RegisterAllPendingEvents()
-            ticker:Cancel()
-        end
-    end)
-end
+end)
 
 local function OnAddonLoaded(addonName)
     if addonName ~= ADDON_NAME then return end
@@ -344,8 +334,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         PA.Display:Update()
 
     elseif event == "PLAYER_REGEN_ENABLED" then
-        -- Left combat - register any deferred events, then update
-        RegisterAllPendingEvents()
+        -- Left combat - delayed update for final scenario values
         C_Timer.After(0.5, function()
             PA.Tracker:OnScenarioUpdate()
             PA.Display:Update()
