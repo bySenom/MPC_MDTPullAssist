@@ -205,4 +205,16 @@ function Tracker:SetCurrentPull(pullIdx)
     currentPullIdx = pullIdx
     PA:Debug("Manual set to pull", pullIdx)
     PA.Display:OnPullAdvanced(pullIdx)
+    PA.Nameplates:OnTrackingChanged()
+end
+
+-- Mark a specific pull as complete and advance (for debug/testing)
+function Tracker:CompletePull(pullIdx)
+    local plan = PA.RouteReader:GetPlan()
+    if not plan then return end
+    if pullIdx < 1 or pullIdx > #plan.pulls then return end
+
+    pullStates[pullIdx] = "complete"
+    PA:Debug("Manually completed pull", pullIdx)
+    self:AdvanceCurrentPull()
 end

@@ -50,6 +50,11 @@ function PA:IsInMythicPlus()
     return false
 end
 
+function PA:IsDebugMode()
+    local settings = self:GetSettings()
+    return settings.debugMode == true
+end
+
 -- Scenario forces reading (same approach as MPC.Util)
 function PA:ReadEnemyForcesRaw()
     if not C_ScenarioInfo or not C_ScenarioInfo.GetScenarioStepInfo then return 0, 0 end
@@ -158,6 +163,23 @@ function PA:ReloadRoute()
     else
         self:Print("Could not load MDT route. Make sure MDT has a route for this dungeon.")
         self.Display:Update()
+    end
+    return success
+end
+
+-- Force-load a specific dungeon route (for debug/follower dungeon testing)
+function PA:ForceLoadDungeon(challengeMapID)
+    PA.Mapping:ClearCache()
+    local success = self.RouteReader:LoadRoute(challengeMapID)
+    if success then
+        self.Tracker:Reset()
+        self.Nameplates:OnRouteChanged()
+        self.Display:SetShown(true)
+        self.Display:Update()
+        self:Print("Force-loaded:", self.Mapping:GetDungeonName(challengeMapID),
+            "-", self.RouteReader:GetPullCount(), "pulls")
+    else
+        self:Print("Could not load MDT route for", self.Mapping:GetDungeonName(challengeMapID))
     end
     return success
 end
@@ -373,6 +395,13 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
         local settings = PA:GetSettings()
         settings.debugMode = not settings.debugMode
         PA:Print("Debug mode:", settings.debugMode and "|cFF44FF44ON|r" or "|cFFFF4444OFF|r")
+        if settings.debugMode then
+            PA:Print("  Frame always visible. COMBAT_LOG tracking active.")
+            PA:Print("  Use /mdtpa load <dungeon> to force-load a route.")
+            PA:Print("  Use /mdtpa done to mark current pull complete.")
+            PA:Print("  Dungeons: pit, skyreach, windrunner, magisters, maisara, nexus, algeth, seat")
+        end
+        PA.Display:UpdateVisibility()
 
     elseif cmd == "status" then
         local plan = PA.RouteReader:GetPlan()
@@ -407,6 +436,36 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
             PA:Print("Set to pull #" .. idx)
         end
 
+    elseif cmd:match("^load%s+(.+)") then
+        local dungeonName = cmd:match("^load%s+(.+)")
+        local mapID = PA.Mapping:ResolveDungeonAlias(dungeonName)
+        if mapID then
+            PA:ForceLoadDungeon(mapID)
+        else
+            PA:Print("Unknown dungeon: '" .. dungeonName .. "'")
+            PA:Print("Available: pit, skyreach, windrunner, magisters, maisara, nexus, algeth, seat")
+        end
+
+    elseif cmd == "done" or cmd == "completepull" then
+        local plan = PA.RouteReader:GetPlan()
+        if not plan then
+            PA:Print("No route loaded.")
+        else
+            local idx = PA.Tracker:GetCurrentPullIndex()
+            if idx <= #plan.pulls then
+                PA.Tracker:CompletePull(idx)
+                PA:Print(string.format("Pull #%d marked complete.", idx))
+            else
+                PA:Print("All pulls already complete.")
+            end
+        end
+
+    elseif cmd == "dungeons" or cmd == "list" then
+        PA:Print("Supported dungeons:")
+        for mapID, name in pairs(PA.Mapping:GetAllDungeonNames()) do
+            PA:Print(string.format("  %s (ID: %d)", name, mapID))
+        end
+
     elseif cmd == "help" then
         PA:Print("Commands:")
         PA:Print("  /mdtpa         - Show the pull assist frame")
@@ -419,6 +478,10 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
         PA:Print("  /mdtpa status  - Print current status")
         PA:Print("  /mdtpa pull N  - Jump to pull #N")
         PA:Print("  /mdtpa debug   - Toggle debug mode")
+        PA:Print("  |cFF44FF44Debug commands:|r")
+        PA:Print("  /mdtpa load <dungeon> - Force-load a dungeon route")
+        PA:Print("  /mdtpa done    - Mark current pull complete")
+        PA:Print("  /mdtpa dungeons - List supported dungeons")
         PA:Print("  /mdtpa help    - This help message")
 
     else

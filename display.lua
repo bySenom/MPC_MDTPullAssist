@@ -369,7 +369,8 @@ function Display:UpdateVisibility()
     end
 
     local inMPlus = PA:IsInMythicPlus()
-    if not inMPlus and not settings.showOutsideMPlus then
+    local debugMode = PA:IsDebugMode()
+    if not inMPlus and not debugMode and not settings.showOutsideMPlus then
         mainFrame:Hide()
         return
     end

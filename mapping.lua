@@ -80,6 +80,53 @@ function Mapping:ClearCache()
     wipe(npcCache)
 end
 
+-- Dungeon name aliases for /mdtpa load <name>
+local DUNGEON_ALIASES = {
+    ["pit"]         = 556, ["pitsaron"]     = 556, ["pos"]       = 556,
+    ["skyreach"]    = 161, ["sky"]          = 161, ["sr"]        = 161,
+    ["windrunner"]  = 557, ["spire"]        = 557, ["ws"]        = 557,
+    ["magisters"]   = 558, ["mt"]           = 558, ["terrace"]   = 558,
+    ["maisara"]     = 560, ["caverns"]      = 560, ["mc"]        = 560,
+    ["nexus"]       = 559, ["xenas"]        = 559, ["npx"]       = 559,
+    ["algeth"]      = 402, ["academy"]      = 402, ["aa"]        = 402,
+    ["seat"]        = 239, ["triumvirate"]  = 239, ["sott"]      = 239,
+}
+
+-- Reverse: challengeMapID → short display name
+local DUNGEON_NAMES = {
+    [556] = "Pit of Saron",
+    [161] = "Skyreach",
+    [557] = "Windrunner Spire",
+    [558] = "Magisters' Terrace",
+    [560] = "Maisara Caverns",
+    [559] = "Nexus-Point Xenas",
+    [402] = "Algeth'ar Academy",
+    [239] = "Seat of the Triumvirate",
+}
+
+function Mapping:ResolveDungeonAlias(input)
+    if not input then return nil end
+    local key = input:lower():gsub("%s+", "")
+    -- Try alias first
+    if DUNGEON_ALIASES[key] then return DUNGEON_ALIASES[key] end
+    -- Try numeric challengeMapID
+    local num = tonumber(input)
+    if num and CHALLENGE_TO_MDT[num] then return num end
+    -- Try partial match
+    for alias, mapID in pairs(DUNGEON_ALIASES) do
+        if alias:find(key, 1, true) then return mapID end
+    end
+    return nil
+end
+
+function Mapping:GetDungeonName(challengeMapID)
+    return DUNGEON_NAMES[challengeMapID] or ("MapID " .. tostring(challengeMapID))
+end
+
+function Mapping:GetAllDungeonNames()
+    return DUNGEON_NAMES
+end
+
 -- Check if both addons are available
 function Mapping:IsReady()
     return MDT ~= nil and MDT.dungeonEnemies ~= nil
