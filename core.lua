@@ -157,48 +157,46 @@ end
 -- Event frame
 local eventFrame = CreateFrame("Frame")
 
--- RegisterEvent can be protected during combat lockdown (/reload in combat).
--- Use pcall to safely attempt registration, defer failures to PLAYER_REGEN_ENABLED.
+-- RegisterEvent is protected during combat lockdown (/reload in combat).
+-- Check InCombatLockdown() BEFORE calling to avoid ADDON_ACTION_FORBIDDEN
+-- (pcall does NOT prevent the taint event from firing).
 local pendingEvents = {}
-local function SafeRegisterEvent(event)
-    local ok = pcall(eventFrame.RegisterEvent, eventFrame, event)
-    if not ok then
+local allEvents = {
+    "ADDON_LOADED",
+    "PLAYER_ENTERING_WORLD",
+    "CHALLENGE_MODE_START",
+    "CHALLENGE_MODE_COMPLETED",
+    "CHALLENGE_MODE_RESET",
+    "SCENARIO_CRITERIA_UPDATE",
+    "COMBAT_LOG_EVENT_UNFILTERED",
+    "PLAYER_REGEN_DISABLED",
+    "PLAYER_REGEN_ENABLED",
+    "ZONE_CHANGED_NEW_AREA",
+}
+
+local function RegisterAllPendingEvents()
+    if InCombatLockdown() then return false end
+    for event in pairs(pendingEvents) do
+        eventFrame:RegisterEvent(event)
+        pendingEvents[event] = nil
+    end
+    return not next(pendingEvents)
+end
+
+-- Register immediately if out of combat, otherwise defer everything
+if not InCombatLockdown() then
+    for _, event in ipairs(allEvents) do
+        eventFrame:RegisterEvent(event)
+    end
+else
+    for _, event in ipairs(allEvents) do
         pendingEvents[event] = true
     end
-end
-
--- Register events: ADDON_LOADED first (always safe), then the rest via pcall
-SafeRegisterEvent("ADDON_LOADED")
-SafeRegisterEvent("PLAYER_ENTERING_WORLD")
-SafeRegisterEvent("CHALLENGE_MODE_START")
-SafeRegisterEvent("CHALLENGE_MODE_COMPLETED")
-SafeRegisterEvent("CHALLENGE_MODE_RESET")
-SafeRegisterEvent("SCENARIO_CRITERIA_UPDATE")
-SafeRegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-SafeRegisterEvent("PLAYER_REGEN_DISABLED")
-SafeRegisterEvent("PLAYER_REGEN_ENABLED")
-SafeRegisterEvent("ZONE_CHANGED_NEW_AREA")
-
--- If any events failed to register, retry when combat ends
-local function RetryPendingEvents()
-    if not next(pendingEvents) then return end
-    for event in pairs(pendingEvents) do
-        local ok = pcall(eventFrame.RegisterEvent, eventFrame, event)
-        if ok then
-            pendingEvents[event] = nil
-            PA:Debug("Deferred event registered:", event)
-        end
-    end
-end
-
--- Safety net: if we're in combat at load time, poll until combat ends
-if InCombatLockdown() and next(pendingEvents) then
+    -- Poll until combat ends, then register
     C_Timer.NewTicker(1, function(ticker)
         if not InCombatLockdown() then
-            RetryPendingEvents()
-            if not next(pendingEvents) then
-                ticker:Cancel()
-            end
+            RegisterAllPendingEvents()
+            ticker:Cancel()
         end
     end)
 end
@@ -347,7 +345,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
     elseif event == "PLAYER_REGEN_ENABLED" then
         -- Left combat - register any deferred events, then update
-        RetryPendingEvents()
+        RegisterAllPendingEvents()
         C_Timer.After(0.5, function()
             PA.Tracker:OnScenarioUpdate()
             PA.Display:Update()
