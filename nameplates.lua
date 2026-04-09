@@ -54,8 +54,12 @@ function Nameplates:BuildLookups()
     wipe(npcPullMap)
 
     local plan = PA.RouteReader:GetPlan()
-    if not plan then return end
+    if not plan then
+        PA:Debug("Nameplates: BuildLookups - no plan")
+        return
+    end
 
+    local npcCount = 0
     for pullIdx, pull in ipairs(plan.pulls) do
         for _, mob in ipairs(pull.mobs) do
             if mob.name then
@@ -64,6 +68,7 @@ function Nameplates:BuildLookups()
             if mob.npcID then
                 if not npcPullMap[mob.npcID] then
                     npcPullMap[mob.npcID] = {}
+                    npcCount = npcCount + 1
                 end
                 -- Avoid duplicate pullIdx entries
                 local dominated = false
@@ -76,6 +81,7 @@ function Nameplates:BuildLookups()
             end
         end
     end
+    PA:Debug("Nameplates: BuildLookups -", npcCount, "unique npcIDs,", #plan.pulls, "pulls")
 end
 
 ----------------------------------------------------------------
@@ -278,11 +284,13 @@ function Nameplates:GetOrCreateOverlay(nameplate)
 
     local overlay = CreateFrame("Frame", nil, nameplate)
     overlay:SetAllPoints()
-    overlay:SetFrameLevel(nameplate:GetFrameLevel() + 5)
+    -- Use TOOLTIP strata so overlay is guaranteed above Platynator/Plater frames
+    overlay:SetFrameStrata("TOOLTIP")
+    overlay:SetFrameLevel(10)
 
     -- Pull text
     overlay.text = overlay:CreateFontString(nil, "OVERLAY")
-    overlay.text:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+    overlay.text:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
 
     -- Dark background behind text for readability
     overlay.bg = overlay:CreateTexture(nil, "ARTWORK")
@@ -321,12 +329,21 @@ function Nameplates:UpdateNameplate(nameplate, unit)
         self:RemoveOverlay(nameplate)
         return
     end
-    if not PA.RouteReader:HasRoute() then return end
+    if not PA.RouteReader:HasRoute() then
+        PA:Debug("Nameplates: no route loaded for", UnitName(unit) or "?")
+        return
+    end
 
     local npcID = self:IdentifyUnit(unit)
-    local info = self:GetPullInfoForNpc(npcID)
+    if not npcID then
+        PA:Debug("Nameplates: could not identify", UnitName(unit) or "?", "- GUID:", UnitGUID(unit) or "nil")
+        self:RemoveOverlay(nameplate)
+        return
+    end
 
+    local info = self:GetPullInfoForNpc(npcID)
     if not info then
+        PA:Debug("Nameplates: npcID", npcID, "not in any upcoming pull")
         self:RemoveOverlay(nameplate)
         return
     end

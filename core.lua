@@ -466,6 +466,53 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
             PA:Print(string.format("  %s (ID: %d)", name, mapID))
         end
 
+    elseif cmd == "nptest" or cmd == "scanplates" then
+        PA:Print("|cFF44FF44Scanning nameplates...|r")
+        local plan = PA.RouteReader:GetPlan()
+        if not plan then
+            PA:Print("  No route loaded!")
+        else
+            PA:Print(string.format("  Route: %s (%d pulls, dungeonIdx %d)",
+                plan.routeName, #plan.pulls, plan.dungeonIdx))
+        end
+        local found = 0
+        for i = 1, 40 do
+            local unit = "nameplate" .. i
+            if UnitExists(unit) then
+                found = found + 1
+                local name = UnitName(unit) or "?"
+                local guid = UnitGUID(unit) or "nil"
+                local npcID = "?"
+                local guidType = ""
+                if guid ~= "nil" then
+                    guidType = strsplit("-", guid)
+                    if guidType == "Creature" or guidType == "Vehicle" then
+                        local _, _, _, _, _, rawID = strsplit("-", guid)
+                        npcID = rawID or "?"
+                    end
+                end
+                local inPullMap = npcID ~= "?" and PA.Nameplates and
+                    type(npcID) == "string" and tonumber(npcID) and
+                    PA.Nameplates:GetPullInfoForNpc(tonumber(npcID))
+                local canAttack = UnitCanAttack("player", unit)
+                local isDead = UnitIsDead(unit)
+                local isPlayer = UnitIsPlayer(unit)
+                local status = canAttack and "|cFF44FF44ATK|r" or "|cFFFF4444friendly|r"
+                if isDead then status = "|cFF888888DEAD|r" end
+                if isPlayer then status = "|cFF8888FFplayer|r" end
+                local pullStr = inPullMap and
+                    string.format("|cFF44FF44Pull %d|r", inPullMap.pullIdx) or
+                    "|cFFFF4444not in route|r"
+                PA:Print(string.format("  [%d] %s | npcID=%s | %s | %s",
+                    i, name, tostring(npcID), status, pullStr))
+            end
+        end
+        if found == 0 then
+            PA:Print("  No nameplates found. Make sure enemy nameplates are enabled (V key).")
+        else
+            PA:Print(string.format("  %d nameplates scanned.", found))
+        end
+
     elseif cmd == "help" then
         PA:Print("Commands:")
         PA:Print("  /mdtpa         - Show the pull assist frame")
@@ -482,6 +529,7 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
         PA:Print("  /mdtpa load <dungeon> - Force-load a dungeon route")
         PA:Print("  /mdtpa done    - Mark current pull complete")
         PA:Print("  /mdtpa dungeons - List supported dungeons")
+        PA:Print("  /mdtpa nptest  - Scan all visible nameplates (diagnose)")
         PA:Print("  /mdtpa help    - This help message")
 
     else
