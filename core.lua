@@ -174,6 +174,16 @@ local allEvents = {
     "ZONE_CHANGED_NEW_AREA",
 }
 
+local function OnAddonLoaded(addonName)
+    if addonName ~= ADDON_NAME then return end
+
+    -- Initialize saved variables
+    if not MPC_MDTPullAssistDB then MPC_MDTPullAssistDB = {} end
+
+    -- Enable immediately
+    PA:OnEnable()
+end
+
 local eventsRegistered = false
 eventFrame:SetScript("OnUpdate", function(self)
     if InCombatLockdown() then return end
@@ -190,16 +200,6 @@ eventFrame:SetScript("OnUpdate", function(self)
         OnAddonLoaded(ADDON_NAME)
     end
 end)
-
-local function OnAddonLoaded(addonName)
-    if addonName ~= ADDON_NAME then return end
-
-    -- Initialize saved variables
-    if not MPC_MDTPullAssistDB then MPC_MDTPullAssistDB = {} end
-
-    -- Enable immediately
-    PA:OnEnable()
-end
 
 -- Called when the addon is enabled
 local enabled = false
