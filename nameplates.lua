@@ -368,13 +368,11 @@ end
 
 ----------------------------------------------------------------
 -- Overlay creation / update / removal
------- Use TOOLTIP strata so overlay is guaranteed above Platynator/Plater frames
-    overlay:SetFrameStrata("TOOLTIP")
-    overlay:SetFrameLevel(10)
+----------------------------------------------------------------
+function Nameplates:GetOrCreateOverlay(nameplate)
+    if overlays[nameplate] then return overlays[nameplate] end
 
-    -- Pull text
-    overlay.text = overlay:CreateFontString(nil, "OVERLAY")
-    overlay.text:SetFont("Fonts\\FRIZQT__.TTF", 10eplate)
+    local overlay = CreateFrame("Frame", nil, nameplate)
     overlay:SetAllPoints()
     -- Use TOOLTIP strata so overlay is guaranteed above Platynator/Plater frames
     overlay:SetFrameStrata("TOOLTIP")
