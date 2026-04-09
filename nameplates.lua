@@ -41,10 +41,13 @@ end
 
 function Nameplates:CreateModelFrame()
     if modelFrame then return end
+    -- DO NOT Hide() the model frame — a hidden PlayerModel won't load
+    -- model data, causing GetModelFileID() to return nil.
+    -- Position offscreen so it's invisible but technically "shown".
     modelFrame = CreateFrame("PlayerModel", nil, UIParent)
     modelFrame:SetSize(1, 1)
     modelFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -200, 200)
-    modelFrame:Hide()
+    modelFrame:SetAlpha(0)
 end
 
 ----------------------------------------------------------------

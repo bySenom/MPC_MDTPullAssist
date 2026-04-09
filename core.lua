@@ -532,7 +532,51 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
                 local fpStr = ""
                 if not identifiedNpc and canAttack and not isPlayer then
                     local fp = PA.Nameplates.BuildFingerprint and PA.Nameplates:BuildFingerprint(unit)
-                    fpStr = fp and (" | fp=" .. fp) or " | fp=nil"
+                    if fp then
+                        fpStr = " | fp=" .. fp
+                    else
+                        -- Diagnose why fingerprint failed
+                        local reason = "?"
+                        if not modelFrame then
+                            -- modelFrame is local to nameplates.lua, check via method
+                            reason = "no modelFrame"
+                        else
+                            reason = "see debug"
+                        end
+                        -- Inline diagnosis: try the individual steps
+                        local diagModelFrame = CreateFrame("PlayerModel")
+                        diagModelFrame:SetSize(1, 1)
+                        local diagOk, diagErr = pcall(diagModelFrame.SetUnit, diagModelFrame, unit)
+                        if not diagOk then
+                            reason = "SetUnit err: " .. tostring(diagErr)
+                        else
+                            local mid = diagModelFrame:GetModelFileID()
+                            if not mid then
+                                reason = "modelID=nil"
+                            elseif isSecretValue(mid) then
+                                reason = "modelID=SECRET"
+                            elseif mid <= 0 then
+                                reason = "modelID=" .. tostring(mid)
+                            else
+                                -- Model ID works, check other fields
+                                local lvl = UnitLevel(unit)
+                                if not lvl or isSecretValue(lvl) then
+                                    reason = "level=SECRET"
+                                else
+                                    local relLvl = lvl % 10
+                                    local cls = UnitClassification(unit) or "x"
+                                    local sx = UnitSex(unit) or 0
+                                    local _, ct = UnitClass(unit)
+                                    ct = ct or "x"
+                                    local pt = UnitPowerType(unit) or -1
+                                    reason = string.format("built=%d:%d:%s:%d:%s:%d",
+                                        mid, relLvl, tostring(cls), sx, tostring(ct), pt)
+                                end
+                            end
+                        end
+                        diagModelFrame:Hide()
+                        fpStr = " | fp=nil (" .. reason .. ")"
+                    end
                 end
                 PA:Print(string.format("  [%d] %s | npcID=%s | guid=%s | %s | %s%s",
                     i, name, tostring(npcID), guidInfo, status, pullStr, fpStr))
