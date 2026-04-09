@@ -472,8 +472,20 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
         if not plan then
             PA:Print("  No route loaded!")
         else
-            PA:Print(string.format("  Route: %s (%d pulls, dungeonIdx %d)",
-                plan.routeName, #plan.pulls, plan.dungeonIdx))
+            PA:Print(string.format("  Route: %s (%d pulls, dungeonIdx %d, mapID %s)",
+                plan.routeName, #plan.pulls, plan.dungeonIdx,
+                tostring(plan.challengeMapID)))
+            -- Show MPC fingerprint database status
+            local mpcFPCount = 0
+            if plan.challengeMapID and MythicPlusCountDB and MythicPlusCountDB.fingerprints then
+                local fpMap = MythicPlusCountDB.fingerprints[plan.challengeMapID]
+                if fpMap then
+                    for _ in pairs(fpMap) do mpcFPCount = mpcFPCount + 1 end
+                end
+            end
+            PA:Print(string.format("  MPC fingerprints: %d %s",
+                mpcFPCount,
+                mpcFPCount > 0 and "|cFF44FF44available|r" or "|cFFFF4444none (run /mpc scan in this dungeon first)|r"))
         end
         local found = 0
         for i = 1, 40 do
@@ -496,9 +508,12 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
                         end
                     end
                 end
-                local inPullMap = npcID ~= "?" and PA.Nameplates and
-                    type(npcID) == "string" and tonumber(npcID) and
-                    PA.Nameplates:GetPullInfoForNpc(tonumber(npcID))
+                -- Try full identification chain (including MPC fingerprints)
+                local identifiedNpc = PA.Nameplates and PA.Nameplates.IdentifyUnit
+                    and PA.Nameplates:IdentifyUnit(unit)
+                if identifiedNpc then npcID = tostring(identifiedNpc) end
+
+                local inPullMap = identifiedNpc and PA.Nameplates:GetPullInfoForNpc(identifiedNpc)
                 local canAttack = UnitCanAttack("player", unit)
                 local isDead = UnitIsDead(unit)
                 local isPlayer = UnitIsPlayer(unit)
@@ -506,10 +521,16 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
                 if isDead then status = "|cFF888888DEAD|r" end
                 if isPlayer then status = "|cFF8888FFplayer|r" end
                 local pullStr = inPullMap and
-                    string.format("|cFF44FF44Pull %d|r", inPullMap.pullIdx) or
+                    string.format("|cFF44FF44Pull %d (%s)|r", inPullMap.pullIdx, inPullMap.pullType or "?") or
                     "|cFFFF4444not in route|r"
-                PA:Print(string.format("  [%d] %s | npcID=%s | guid=%s | %s | %s",
-                    i, name, tostring(npcID), guidInfo, status, pullStr))
+                -- Show fingerprint for unidentified mobs
+                local fpStr = ""
+                if not identifiedNpc and canAttack and not isPlayer then
+                    local fp = PA.Nameplates.BuildFingerprint and PA.Nameplates:BuildFingerprint(unit)
+                    fpStr = fp and (" | fp=" .. fp) or " | fp=nil"
+                end
+                PA:Print(string.format("  [%d] %s | npcID=%s | guid=%s | %s | %s%s",
+                    i, name, tostring(npcID), guidInfo, status, pullStr, fpStr))
             end
         end
         if found == 0 then

@@ -22,6 +22,7 @@ local nameLookup = {}           -- [mobName] = npcID
 local npcPullMap = {}           -- [npcID] = { pullIndices sorted }
 local modelFrame = nil          -- hidden PlayerModel for fingerprinting
 local learnedFingerprints = {}  -- [fingerprint] = npcID
+local mpcFingerprints = {}      -- [fingerprint] = npcID (loaded from MythicPlusCountDB)
 
 -- Colors per pull proximity
 local PULL_COLORS = {
@@ -82,6 +83,25 @@ function Nameplates:BuildLookups()
         end
     end
     PA:Debug("Nameplates: BuildLookups -", npcCount, "unique npcIDs,", #plan.pulls, "pulls")
+
+    -- Load MPC fingerprint database for this dungeon (if MythicPlusCount is installed)
+    wipe(mpcFingerprints)
+    local challengeMapID = plan.challengeMapID
+    if challengeMapID and MythicPlusCountDB and MythicPlusCountDB.fingerprints then
+        local fpMap = MythicPlusCountDB.fingerprints[challengeMapID]
+        if fpMap then
+            local fpCount = 0
+            for fp, npcID in pairs(fpMap) do
+                mpcFingerprints[fp] = npcID
+                fpCount = fpCount + 1
+            end
+            PA:Debug("Nameplates: Loaded", fpCount, "MPC fingerprints for mapID", challengeMapID)
+        else
+            PA:Debug("Nameplates: No MPC fingerprints for mapID", challengeMapID)
+        end
+    elseif not MythicPlusCountDB then
+        PA:Debug("Nameplates: MythicPlusCountDB not found (MPC not installed or no saved data)")
+    end
 end
 
 ----------------------------------------------------------------
@@ -123,10 +143,28 @@ function Nameplates:IdentifyUnit(unit)
         end
     end
 
-    -- Strategy 3: Fingerprint lookup (self-learned from earlier GUID reads)
+    -- Strategy 3: MPC fingerprint database (pre-built + user-learned via MythicPlusCount)
     local fp = self:BuildFingerprint(unit)
-    if fp and learnedFingerprints[fp] then
-        return learnedFingerprints[fp]
+    if fp then
+        -- 3a: Check MPC database (exact match)
+        if mpcFingerprints[fp] then
+            local npcID = mpcFingerprints[fp]
+            PA:Debug("Nameplates: identified via MPC fingerprint:", fp, "→ npcID", npcID)
+            return npcID
+        end
+
+        -- 3b: Check MPC with extended fingerprint (includes buffCount for disambiguation)
+        local extFP = self:BuildExtendedFingerprint(unit, fp)
+        if extFP and mpcFingerprints[extFP] then
+            local npcID = mpcFingerprints[extFP]
+            PA:Debug("Nameplates: identified via MPC extended fingerprint:", extFP, "→ npcID", npcID)
+            return npcID
+        end
+
+        -- 3c: Self-learned fingerprints (from earlier GUID reads in non-secret zones)
+        if learnedFingerprints[fp] then
+            return learnedFingerprints[fp]
+        end
     end
 
     return nil
@@ -225,6 +263,25 @@ function Nameplates:LearnFingerprint(unit, npcID)
             PA:Debug("Learned fingerprint for npcID", npcID, "→", fp)
         end
     end
+end
+
+-- Extended fingerprint with buffCount for disambiguation (matches MPC's format)
+function Nameplates:BuildExtendedFingerprint(unit, baseFP)
+    if not baseFP then baseFP = self:BuildFingerprint(unit) end
+    if not baseFP then return nil end
+
+    local buffCount = 0
+    if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+        for i = 1, 20 do
+            local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HELPFUL")
+            if ok and aura then
+                buffCount = buffCount + 1
+            else
+                break
+            end
+        end
+    end
+    return baseFP .. ":" .. buffCount
 end
 
 ----------------------------------------------------------------
