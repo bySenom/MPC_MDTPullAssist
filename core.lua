@@ -154,19 +154,54 @@ function PA:ReloadRoute()
     return success
 end
 
--- Event frame: register ALL events at file load time to avoid
--- ADDON_ACTION_FORBIDDEN when /reload happens during combat lockdown.
+-- Event frame
 local eventFrame = CreateFrame("Frame")
-eventFrame:RegisterEvent("ADDON_LOADED")
-eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eventFrame:RegisterEvent("CHALLENGE_MODE_START")
-eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
-eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
-eventFrame:RegisterEvent("SCENARIO_CRITERIA_UPDATE")
-eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+
+-- RegisterEvent can be protected during combat lockdown (/reload in combat).
+-- Use pcall to safely attempt registration, defer failures to PLAYER_REGEN_ENABLED.
+local pendingEvents = {}
+local function SafeRegisterEvent(event)
+    local ok = pcall(eventFrame.RegisterEvent, eventFrame, event)
+    if not ok then
+        pendingEvents[event] = true
+    end
+end
+
+-- Register events: ADDON_LOADED first (always safe), then the rest via pcall
+SafeRegisterEvent("ADDON_LOADED")
+SafeRegisterEvent("PLAYER_ENTERING_WORLD")
+SafeRegisterEvent("CHALLENGE_MODE_START")
+SafeRegisterEvent("CHALLENGE_MODE_COMPLETED")
+SafeRegisterEvent("CHALLENGE_MODE_RESET")
+SafeRegisterEvent("SCENARIO_CRITERIA_UPDATE")
+SafeRegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+SafeRegisterEvent("PLAYER_REGEN_DISABLED")
+SafeRegisterEvent("PLAYER_REGEN_ENABLED")
+SafeRegisterEvent("ZONE_CHANGED_NEW_AREA")
+
+-- If any events failed to register, retry when combat ends
+local function RetryPendingEvents()
+    if not next(pendingEvents) then return end
+    for event in pairs(pendingEvents) do
+        local ok = pcall(eventFrame.RegisterEvent, eventFrame, event)
+        if ok then
+            pendingEvents[event] = nil
+            PA:Debug("Deferred event registered:", event)
+        end
+    end
+end
+
+-- Safety net: if we're in combat at load time, poll until combat ends
+if InCombatLockdown() and next(pendingEvents) then
+    C_Timer.NewTicker(1, function(ticker)
+        if not InCombatLockdown() then
+            RetryPendingEvents()
+            if not next(pendingEvents) then
+                ticker:Cancel()
+            end
+        end
+    end)
+end
 
 local function OnAddonLoaded(addonName)
     if addonName ~= ADDON_NAME then return end
@@ -311,7 +346,8 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         PA.Display:Update()
 
     elseif event == "PLAYER_REGEN_ENABLED" then
-        -- Left combat - delayed update for final scenario values
+        -- Left combat - register any deferred events, then update
+        RetryPendingEvents()
         C_Timer.After(0.5, function()
             PA.Tracker:OnScenarioUpdate()
             PA.Display:Update()
