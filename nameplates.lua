@@ -412,20 +412,11 @@ function Nameplates:UpdateNameplate(nameplate, unit)
     if UnitIsDead(unit) then
         self:RemoveOverlay(nameplate)
         return
-        PA:Debug("Nameplates: no route loaded for", UnitName(unit) or "?")
-        return
     end
 
-    local npcID = self:IdentifyUnit(unit)
-    if not npcID then
-        PA:Debug("Nameplates: could not identify", UnitName(unit) or "?", "- GUID:", UnitGUID(unit) or "nil")
+    local settings = PA:GetSettings()
+    if settings.nameplatesEnabled == false then
         self:RemoveOverlay(nameplate)
-        return
-    end
-
-    local info = self:GetPullInfoForNpc(npcID)
-    if not info then
-        PA:Debug("Nameplates: npcID", npcID, "not in any upcoming pull")verlay(nameplate)
         return
     end
     if not PA.RouteReader:HasRoute() then
