@@ -481,14 +481,19 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
             if UnitExists(unit) then
                 found = found + 1
                 local name = UnitName(unit) or "?"
-                local guid = UnitGUID(unit) or "nil"
+                local guid = UnitGUID(unit)
                 local npcID = "?"
-                local guidType = ""
-                if guid ~= "nil" then
-                    guidType = strsplit("-", guid)
-                    if guidType == "Creature" or guidType == "Vehicle" then
-                        local _, _, _, _, _, rawID = strsplit("-", guid)
-                        npcID = rawID or "?"
+                local guidInfo = "nil"
+                if guid then
+                    if isSecretValue(guid) then
+                        guidInfo = "SECRET"
+                    else
+                        guidInfo = guid
+                        local guidType = strsplit("-", guid)
+                        if guidType == "Creature" or guidType == "Vehicle" then
+                            local _, _, _, _, _, rawID = strsplit("-", guid)
+                            npcID = rawID or "?"
+                        end
                     end
                 end
                 local inPullMap = npcID ~= "?" and PA.Nameplates and
@@ -503,8 +508,8 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
                 local pullStr = inPullMap and
                     string.format("|cFF44FF44Pull %d|r", inPullMap.pullIdx) or
                     "|cFFFF4444not in route|r"
-                PA:Print(string.format("  [%d] %s | npcID=%s | %s | %s",
-                    i, name, tostring(npcID), status, pullStr))
+                PA:Print(string.format("  [%d] %s | npcID=%s | guid=%s | %s | %s",
+                    i, name, tostring(npcID), guidInfo, status, pullStr))
             end
         end
         if found == 0 then

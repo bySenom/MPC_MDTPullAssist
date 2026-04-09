@@ -278,11 +278,13 @@ end
 
 ----------------------------------------------------------------
 -- Overlay creation / update / removal
-----------------------------------------------------------------
-function Nameplates:GetOrCreateOverlay(nameplate)
-    if overlays[nameplate] then return overlays[nameplate] end
+------ Use TOOLTIP strata so overlay is guaranteed above Platynator/Plater frames
+    overlay:SetFrameStrata("TOOLTIP")
+    overlay:SetFrameLevel(10)
 
-    local overlay = CreateFrame("Frame", nil, nameplate)
+    -- Pull text
+    overlay.text = overlay:CreateFontString(nil, "OVERLAY")
+    overlay.text:SetFont("Fonts\\FRIZQT__.TTF", 10eplate)
     overlay:SetAllPoints()
     -- Use TOOLTIP strata so overlay is guaranteed above Platynator/Plater frames
     overlay:SetFrameStrata("TOOLTIP")
@@ -322,11 +324,20 @@ function Nameplates:UpdateNameplate(nameplate, unit)
     if UnitIsDead(unit) then
         self:RemoveOverlay(nameplate)
         return
+        PA:Debug("Nameplates: no route loaded for", UnitName(unit) or "?")
+        return
     end
 
-    local settings = PA:GetSettings()
-    if settings.nameplatesEnabled == false then
+    local npcID = self:IdentifyUnit(unit)
+    if not npcID then
+        PA:Debug("Nameplates: could not identify", UnitName(unit) or "?", "- GUID:", UnitGUID(unit) or "nil")
         self:RemoveOverlay(nameplate)
+        return
+    end
+
+    local info = self:GetPullInfoForNpc(npcID)
+    if not info then
+        PA:Debug("Nameplates: npcID", npcID, "not in any upcoming pull")verlay(nameplate)
         return
     end
     if not PA.RouteReader:HasRoute() then
