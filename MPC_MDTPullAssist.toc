@@ -1,0 +1,17 @@
+## Interface: 120001
+## Title: MPC - MDT Pull Assist
+## Notes: Displays the next MDT route pull in real-time during Mythic+ dungeons. Hooks into MythicPlusCount.
+## Author: Sasha
+## Version: 1.0.0
+## Dependencies: MythicPlusCount, MythicDungeonTools
+## SavedVariables: MPC_MDTPullAssistDB
+## DefaultState: enabled
+## IconTexture: Interface\Icons\INV_Misc_Map_01
+## X-Category: Dungeons & Raids
+
+core.lua
+mapping.lua
+route_reader.lua
+tracker.lua
+display.lua
+options.lua

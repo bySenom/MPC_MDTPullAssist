@@ -1,0 +1,238 @@
+-- MPC_MDTPullAssist - Options
+-- Standalone settings panel with dark theme.
+local ADDON_NAME, NS = ...
+local PA = NS.PullAssist
+
+local Options = {}
+PA.Options = Options
+
+local optionsFrame = nil
+
+-- UI helpers (matching MPC's options style)
+local C = {
+    bg         = { 0.08, 0.08, 0.10, 0.95 },
+    bgCard     = { 0.12, 0.12, 0.14, 1.0 },
+    border     = { 0.25, 0.25, 0.30, 1.0 },
+    accent     = { 0.30, 0.70, 1.00, 1.0 },
+    textNormal = { 0.85, 0.85, 0.85, 1.0 },
+    textBright = { 1.00, 1.00, 1.00, 1.0 },
+    textDim    = { 0.55, 0.55, 0.60, 1.0 },
+    green      = { 0.30, 0.85, 0.40, 1.0 },
+    red        = { 0.90, 0.35, 0.35, 1.0 },
+}
+
+local function CreateCheckbox(parent, label, xOff, yOff, getter, setter)
+    local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    cb:SetPoint("TOPLEFT", xOff, yOff)
+    cb:SetSize(24, 24)
+    cb:SetChecked(getter())
+    cb:SetScript("OnClick", function(self)
+        setter(self:GetChecked())
+    end)
+
+    local text = cb:CreateFontString(nil, "OVERLAY")
+    text:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
+    text:SetTextColor(unpack(C.textNormal))
+    text:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+    text:SetText(label)
+
+    return cb, text
+end
+
+local function CreateSlider(parent, label, xOff, yOff, minVal, maxVal, step, getter, setter)
+    local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
+    slider:SetPoint("TOPLEFT", xOff, yOff)
+    slider:SetSize(180, 16)
+    slider:SetMinMaxValues(minVal, maxVal)
+    slider:SetValueStep(step)
+    slider:SetObeyStepOnDrag(true)
+    slider:SetValue(getter())
+
+    slider.Text:SetText(label)
+    slider.Low:SetText(tostring(minVal))
+    slider.High:SetText(tostring(maxVal))
+
+    local valueText = slider:CreateFontString(nil, "OVERLAY")
+    valueText:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
+    valueText:SetTextColor(unpack(C.textBright))
+    valueText:SetPoint("TOP", slider, "BOTTOM", 0, -2)
+    valueText:SetText(string.format("%.0f%%", getter() * 100))
+
+    slider:SetScript("OnValueChanged", function(self, value)
+        setter(value)
+        valueText:SetText(string.format("%.0f%%", value * 100))
+    end)
+
+    return slider
+end
+
+local function CreateButton(parent, label, xOff, yOff, width, onClick)
+    local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    btn:SetPoint("TOPLEFT", xOff, yOff)
+    btn:SetSize(width, 22)
+    btn:SetText(label)
+    btn:SetScript("OnClick", onClick)
+    return btn
+end
+
+local function CreateSectionHeader(parent, text, yOff)
+    local header = parent:CreateFontString(nil, "OVERLAY")
+    header:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
+    header:SetTextColor(unpack(C.accent))
+    header:SetPoint("TOPLEFT", 12, yOff)
+    header:SetText(text)
+
+    local line = parent:CreateTexture(nil, "ARTWORK")
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -3)
+    line:SetPoint("RIGHT", parent, "RIGHT", -12, 0)
+    line:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 0.3)
+
+    return header
+end
+
+function Options:Toggle()
+    if optionsFrame and optionsFrame:IsShown() then
+        optionsFrame:Hide()
+    else
+        self:Show()
+    end
+end
+
+function Options:Show()
+    if not optionsFrame then
+        self:CreatePanel()
+    end
+    self:RefreshStatus()
+    optionsFrame:Show()
+end
+
+function Options:CreatePanel()
+    local settings = PA:GetSettings()
+
+    optionsFrame = CreateFrame("Frame", "MPCPullAssistOptions", UIParent, "BackdropTemplate")
+    optionsFrame:SetSize(340, 480)
+    optionsFrame:SetPoint("CENTER")
+    optionsFrame:SetFrameStrata("DIALOG")
+    optionsFrame:SetMovable(true)
+    optionsFrame:EnableMouse(true)
+    optionsFrame:RegisterForDrag("LeftButton")
+    optionsFrame:SetScript("OnDragStart", optionsFrame.StartMoving)
+    optionsFrame:SetScript("OnDragStop", optionsFrame.StopMovingOrSizing)
+    optionsFrame:SetClampedToScreen(true)
+
+    optionsFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    optionsFrame:SetBackdropColor(unpack(C.bg))
+    optionsFrame:SetBackdropBorderColor(unpack(C.border))
+
+    -- Title bar
+    local titleBg = optionsFrame:CreateTexture(nil, "ARTWORK")
+    titleBg:SetPoint("TOPLEFT", 1, -1)
+    titleBg:SetPoint("TOPRIGHT", -1, -1)
+    titleBg:SetHeight(24)
+    titleBg:SetColorTexture(0.10, 0.10, 0.14, 1.0)
+
+    local title = optionsFrame:CreateFontString(nil, "OVERLAY")
+    title:SetFont("Fonts\\FRIZQT__.TTF", 12, "")
+    title:SetTextColor(unpack(C.accent))
+    title:SetPoint("TOPLEFT", 10, -5)
+    title:SetText("MDT Pull Assist - Settings")
+
+    -- Close button
+    local closeBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", -2, -1)
+    closeBtn:SetSize(20, 20)
+
+    -- Escape to close
+    tinsert(UISpecialFrames, "MPCPullAssistOptions")
+
+    -- Content area
+    local content = CreateFrame("Frame", nil, optionsFrame)
+    content:SetPoint("TOPLEFT", 0, -30)
+    content:SetPoint("BOTTOMRIGHT", 0, 0)
+
+    local yOff = -10
+
+    -- Display section
+    CreateSectionHeader(content, "Display", yOff)
+    yOff = yOff - 30
+
+    CreateCheckbox(content, "Show forces count", 16, yOff,
+        function() return settings.showCount ~= false end,
+        function(v) settings.showCount = v; PA.Display:Update() end)
+    yOff = yOff - 26
+
+    CreateCheckbox(content, "Show forces percent", 16, yOff,
+        function() return settings.showPercent ~= false end,
+        function(v) settings.showPercent = v; PA.Display:Update() end)
+    yOff = yOff - 26
+
+    CreateCheckbox(content, "Show outside Mythic+", 16, yOff,
+        function() return settings.showOutsideMPlus == true end,
+        function(v) settings.showOutsideMPlus = v; PA.Display:UpdateVisibility() end)
+    yOff = yOff - 36
+
+    -- Tracking section
+    CreateSectionHeader(content, "Tracking", yOff)
+    yOff = yOff - 30
+
+    CreateSlider(content, "Completion Threshold", 16, yOff, 0.5, 1.0, 0.05,
+        function() return PA.Tracker:GetThreshold() end,
+        function(v) PA.Tracker:SetThreshold(v); settings.threshold = v end)
+    yOff = yOff - 50
+
+    -- Actions section
+    CreateSectionHeader(content, "Actions", yOff)
+    yOff = yOff - 30
+
+    CreateButton(content, "Reload Route", 16, yOff, 140, function()
+        PA:ReloadRoute()
+        self:RefreshStatus()
+    end)
+
+    CreateButton(content, "Reset Tracking", 170, yOff, 140, function()
+        PA.Tracker:Reset()
+        PA.Display:Update()
+        self:RefreshStatus()
+    end)
+    yOff = yOff - 34
+
+    CreateButton(content, "Show Frame", 16, yOff, 140, function()
+        PA.Display:SetShown(true)
+    end)
+
+    CreateButton(content, "Hide Frame", 170, yOff, 140, function()
+        PA.Display:SetShown(false)
+    end)
+    yOff = yOff - 40
+
+    -- Status section
+    CreateSectionHeader(content, "Status", yOff)
+    yOff = yOff - 26
+
+    optionsFrame.statusText = content:CreateFontString(nil, "OVERLAY")
+    optionsFrame.statusText:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
+    optionsFrame.statusText:SetTextColor(unpack(C.textNormal))
+    optionsFrame.statusText:SetPoint("TOPLEFT", 16, yOff)
+    optionsFrame.statusText:SetWidth(300)
+    optionsFrame.statusText:SetJustifyH("LEFT")
+end
+
+function Options:RefreshStatus()
+    if not optionsFrame or not optionsFrame.statusText then return end
+    local plan = PA.RouteReader:GetPlan()
+    if plan then
+        local pullIdx = PA.Tracker:GetCurrentPullIndex()
+        optionsFrame.statusText:SetText(string.format(
+            "Route: %s\nPulls: %d | Current: #%d | Completed: %d\nTotal Forces: %d",
+            plan.routeName, #plan.pulls, pullIdx,
+            PA.Tracker:GetCompletedPullCount(), plan.totalForces))
+    else
+        optionsFrame.statusText:SetText("No route loaded.\nEnter a M+ dungeon with an MDT route selected.")
+    end
+end
