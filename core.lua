@@ -21,6 +21,7 @@ PA.Mapping = PA.Mapping or {}
 PA.RouteReader = PA.RouteReader or {}
 PA.Tracker = PA.Tracker or {}
 PA.Display = PA.Display or {}
+PA.Nameplates = PA.Nameplates or {}
 PA.Options = PA.Options or {}
 
 local issecretvalue = issecretvalue or function() return false end
@@ -142,6 +143,7 @@ function PA:ReloadRoute()
     local success = self.RouteReader:LoadRoute(mapID)
     if success then
         self.Tracker:Reset()
+        self.Nameplates:OnRouteChanged()
         self.Display:Update()
         self:Print("Route loaded:", self.RouteReader:GetPlan().routeName,
             "-", self.RouteReader:GetPullCount(), "pulls")
@@ -176,6 +178,9 @@ function PA:OnEnable()
 
     -- Initialize display
     self.Display:Init()
+
+    -- Initialize nameplates
+    self.Nameplates:Init()
 
     -- Initialize tracker
     self.Tracker:Init()

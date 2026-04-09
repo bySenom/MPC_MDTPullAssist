@@ -13,5 +13,6 @@ core.lua
 mapping.lua
 route_reader.lua
 tracker.lua
+nameplates.lua
 display.lua
 options.lua

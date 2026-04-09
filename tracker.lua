@@ -163,6 +163,7 @@ function Tracker:AdvanceCurrentPull()
             if oldIdx ~= currentPullIdx then
                 PA:Debug("Advanced to pull", currentPullIdx)
                 PA.Display:OnPullAdvanced(currentPullIdx)
+                PA.Nameplates:OnTrackingChanged()
             end
             return
         end
@@ -173,6 +174,7 @@ function Tracker:AdvanceCurrentPull()
     if oldIdx ~= currentPullIdx then
         PA:Debug("All pulls complete!")
         PA.Display:OnAllPullsComplete()
+        PA.Nameplates:OnTrackingChanged()
     end
 end
 

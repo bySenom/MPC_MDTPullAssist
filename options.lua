@@ -111,7 +111,7 @@ function Options:CreatePanel()
     local settings = PA:GetSettings()
 
     optionsFrame = CreateFrame("Frame", "MPCPullAssistOptions", UIParent, "BackdropTemplate")
-    optionsFrame:SetSize(340, 480)
+    optionsFrame:SetSize(340, 580)
     optionsFrame:SetPoint("CENTER")
     optionsFrame:SetFrameStrata("DIALOG")
     optionsFrame:SetMovable(true)
@@ -175,6 +175,25 @@ function Options:CreatePanel()
     CreateCheckbox(content, "Show outside Mythic+", 16, yOff,
         function() return settings.showOutsideMPlus == true end,
         function(v) settings.showOutsideMPlus = v; PA.Display:UpdateVisibility() end)
+    yOff = yOff - 36
+
+    -- Nameplates section
+    CreateSectionHeader(content, "Nameplates", yOff)
+    yOff = yOff - 30
+
+    CreateCheckbox(content, "Show pull number on nameplates", 16, yOff,
+        function() return settings.nameplatesEnabled ~= false end,
+        function(v) settings.nameplatesEnabled = v; PA.Nameplates:RefreshAll() end)
+    yOff = yOff - 26
+
+    CreateCheckbox(content, "Show forces count on nameplates", 16, yOff,
+        function() return settings.nameplateShowForces ~= false end,
+        function(v) settings.nameplateShowForces = v; PA.Nameplates:RefreshAll() end)
+    yOff = yOff - 26
+
+    CreateCheckbox(content, "Current pull only (hide future pulls)", 16, yOff,
+        function() return settings.nameplatesCurrentOnly == true end,
+        function(v) settings.nameplatesCurrentOnly = v; PA.Nameplates:RefreshAll() end)
     yOff = yOff - 36
 
     -- Tracking section
