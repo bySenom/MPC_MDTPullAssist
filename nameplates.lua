@@ -84,24 +84,38 @@ function Nameplates:BuildLookups()
     end
     PA:Debug("Nameplates: BuildLookups -", npcCount, "unique npcIDs,", #plan.pulls, "pulls")
 
-    -- Load MPC fingerprint database for this dungeon (if MythicPlusCount is installed)
+    -- Load fingerprint database for this dungeon.
+    -- Priority: MPC saved variable > our embedded defaults
     wipe(mpcFingerprints)
     local challengeMapID = plan.challengeMapID
+    local fpLoaded = 0
+
+    -- Source 1: MPC saved variable (user-learned fingerprints, most accurate)
     if challengeMapID and MythicPlusCountDB and MythicPlusCountDB.fingerprints then
         local fpMap = MythicPlusCountDB.fingerprints[challengeMapID]
         if fpMap then
-            local fpCount = 0
             for fp, npcID in pairs(fpMap) do
                 mpcFingerprints[fp] = npcID
-                fpCount = fpCount + 1
+                fpLoaded = fpLoaded + 1
             end
-            PA:Debug("Nameplates: Loaded", fpCount, "MPC fingerprints for mapID", challengeMapID)
-        else
-            PA:Debug("Nameplates: No MPC fingerprints for mapID", challengeMapID)
         end
-    elseif not MythicPlusCountDB then
-        PA:Debug("Nameplates: MythicPlusCountDB not found (MPC not installed or no saved data)")
     end
+
+    -- Source 2: Our embedded defaults (always available, no MPC dungeon visit required)
+    if PA.EmbeddedFingerprints and challengeMapID then
+        local embedded = PA.EmbeddedFingerprints[challengeMapID]
+        if embedded then
+            for fp, npcID in pairs(embedded) do
+                -- Don't overwrite user-learned data from MPC
+                if not mpcFingerprints[fp] then
+                    mpcFingerprints[fp] = npcID
+                    fpLoaded = fpLoaded + 1
+                end
+            end
+        end
+    end
+
+    PA:Debug("Nameplates: Loaded", fpLoaded, "fingerprints for mapID", challengeMapID)
 end
 
 ----------------------------------------------------------------
@@ -229,11 +243,25 @@ end
 -- Fingerprint system (mirrors MPC's approach, self-learning)
 ----------------------------------------------------------------
 function Nameplates:BuildFingerprint(unit)
-    if not modelFrame then return nil end
+    if not modelFrame then
+        PA:Debug("Nameplates: BuildFingerprint - no modelFrame")
+        return nil
+    end
 
-    modelFrame:SetUnit(unit)
+    local ok, err = pcall(modelFrame.SetUnit, modelFrame, unit)
+    if not ok then
+        PA:Debug("Nameplates: SetUnit failed:", err)
+        return nil
+    end
     local modelID = modelFrame:GetModelFileID()
-    if not modelID or isSecret(modelID) or modelID <= 0 then return nil end
+    if not modelID or isSecret(modelID) then
+        PA:Debug("Nameplates: modelID nil or secret for", UnitName(unit) or "?")
+        return nil
+    end
+    if modelID <= 0 then
+        PA:Debug("Nameplates: modelID <= 0 for", UnitName(unit) or "?")
+        return nil
+    end
 
     local level = UnitLevel(unit)
     if not level or isSecret(level) then return nil end

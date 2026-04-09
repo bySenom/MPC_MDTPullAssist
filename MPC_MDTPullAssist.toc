@@ -11,6 +11,7 @@
 
 core.lua
 mapping.lua
+fingerprints.lua
 route_reader.lua
 tracker.lua
 nameplates.lua

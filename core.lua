@@ -475,7 +475,7 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
             PA:Print(string.format("  Route: %s (%d pulls, dungeonIdx %d, mapID %s)",
                 plan.routeName, #plan.pulls, plan.dungeonIdx,
                 tostring(plan.challengeMapID)))
-            -- Show MPC fingerprint database status
+            -- Show fingerprint database status
             local mpcFPCount = 0
             if plan.challengeMapID and MythicPlusCountDB and MythicPlusCountDB.fingerprints then
                 local fpMap = MythicPlusCountDB.fingerprints[plan.challengeMapID]
@@ -483,9 +483,14 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
                     for _ in pairs(fpMap) do mpcFPCount = mpcFPCount + 1 end
                 end
             end
-            PA:Print(string.format("  MPC fingerprints: %d %s",
-                mpcFPCount,
-                mpcFPCount > 0 and "|cFF44FF44available|r" or "|cFFFF4444none (run /mpc scan in this dungeon first)|r"))
+            local embeddedCount = 0
+            if plan.challengeMapID and PA.EmbeddedFingerprints and PA.EmbeddedFingerprints[plan.challengeMapID] then
+                for _ in pairs(PA.EmbeddedFingerprints[plan.challengeMapID]) do embeddedCount = embeddedCount + 1 end
+            end
+            local totalFP = mpcFPCount + embeddedCount
+            PA:Print(string.format("  Fingerprints: %d (MPC: %d, embedded: %d) %s",
+                totalFP, mpcFPCount, embeddedCount,
+                totalFP > 0 and "|cFF44FF44OK|r" or "|cFFFF4444none!|r"))
         end
         local found = 0
         for i = 1, 40 do
