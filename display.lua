@@ -27,7 +27,7 @@ local FRAME_MIN_HEIGHT = 60
 local LINE_HEIGHT = 14
 local HEADER_HEIGHT = 20
 local PADDING = 8
-111
+
 -- Dark theme colors matching MPC options panel
 local C = {
     bg         = { 0.06, 0.06, 0.08, 0.88 },
