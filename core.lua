@@ -218,30 +218,31 @@ function PA:ForceLoadDungeon(challengeMapID)
 end
 
 -- Event frame
--- IMPORTANT: No secure globals (issecretvalue, etc.) were read before this
--- point, so the execution context is untainted and RegisterEvent is safe.
+-- Defer event registration to C_Timer.After(0) so it runs in a clean,
+-- untainted execution context.  By the time the callback fires every addon
+-- has already loaded, so we skip ADDON_LOADED and initialise directly.
 local eventFrame = CreateFrame("Frame")
-eventFrame:RegisterEvent("ADDON_LOADED")
-eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eventFrame:RegisterEvent("CHALLENGE_MODE_START")
-eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
-eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
-eventFrame:RegisterEvent("SCENARIO_CRITERIA_UPDATE")
-eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-eventFrame:RegisterEvent("CHAT_MSG_ADDON")
-eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+
+C_Timer.After(0, function()
+    -- Saved-variables are available now (all ADDON_LOADED events have fired)
+    if not MPC_MDTPullAssistDB then MPC_MDTPullAssistDB = {} end
+    PA:OnEnable()
+
+    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    eventFrame:RegisterEvent("CHALLENGE_MODE_START")
+    eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
+    eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
+    eventFrame:RegisterEvent("SCENARIO_CRITERIA_UPDATE")
+    eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    eventFrame:RegisterEvent("CHAT_MSG_ADDON")
+    eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+end)
 
 local function OnAddonLoaded(addonName)
-    if addonName ~= ADDON_NAME then return end
-
-    -- Initialize saved variables
-    if not MPC_MDTPullAssistDB then MPC_MDTPullAssistDB = {} end
-
-    -- Enable immediately
-    PA:OnEnable()
+    -- No longer used; kept for reference
 end
 
 -- Called when the addon is enabled
@@ -459,12 +460,7 @@ end
 
 -- Event dispatcher
 eventFrame:SetScript("OnEvent", function(self, event, ...)
-    if event == "ADDON_LOADED" then
-        OnAddonLoaded(...)
-        return
-    end
-
-    -- Ignore all other events until fully initialized
+    -- Ignore all events until fully initialized
     if not enabled then return end
 
     if event == "PLAYER_ENTERING_WORLD" then
