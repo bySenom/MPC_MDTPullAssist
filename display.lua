@@ -591,18 +591,50 @@ function Display:ShowOffRouteWarning(mobName)
     warningFrame:SetAlpha(1)
     warningFrame:Show()
 
-    -- Start fade animation
-    if warningFadeAnim then warningFadeAnim:Play() end
+    -- Start fade animation (skip if unlocked for positioning)
+    if not warningFrame.unlocked and warningFadeAnim then
+        warningFadeAnim:Play()
+    end
 
     -- Clear auto-dismiss timer from old system
     if warningTimer then warningTimer:Cancel(); warningTimer = nil end
 
-    -- Play sound
+    -- Play sound (supports built-in IDs and SharedMedia paths)
     local settings = PA:GetSettings()
     local soundKey = settings.warnSound or "RaidWarning"
-    local soundID = WARNING_SOUNDS[soundKey]
-    if soundID then
-        PlaySound(soundID, "Master")
+    if soundKey ~= "None" then
+        -- Try saved path first (SharedMedia)
+        if settings.warnSoundPath then
+            PlaySoundFile(settings.warnSoundPath, "Master")
+        else
+            local soundID = settings.warnSoundID or WARNING_SOUNDS[soundKey]
+            if soundID then
+                PlaySound(soundID, "Master")
+            end
+        end
+    end
+end
+
+-- Toggle warning frame unlock for repositioning
+function Display:ToggleWarningUnlock()
+    if not warningFrame then self:CreateWarningFrame() end
+    if not warningFrame then return end
+
+    warningFrame.unlocked = not warningFrame.unlocked
+
+    if warningFrame.unlocked then
+        -- Show with drag hint, no fade
+        if warningFadeAnim then warningFadeAnim:Stop() end
+        warningFrame:SetAlpha(1)
+        warningText:SetText("-- Drag to reposition --")
+        warningText:SetTextColor(1.0, 0.82, 0.0, 1.0)
+        warningFrame:SetBackdropBorderColor(1.0, 0.82, 0.0, 0.9)
+        warningFrame:Show()
+    else
+        -- Lock and hide
+        warningText:SetTextColor(1.0, 0.30, 0.30, 1.0)
+        warningFrame:SetBackdropBorderColor(0.90, 0.20, 0.20, 0.9)
+        warningFrame:Hide()
     end
 end
 

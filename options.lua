@@ -111,7 +111,7 @@ function Options:CreatePanel()
     local settings = PA:GetSettings()
 
     optionsFrame = CreateFrame("Frame", "MPCPullAssistOptions", UIParent, "BackdropTemplate")
-    optionsFrame:SetSize(340, 680)
+    optionsFrame:SetSize(340, 730)
     optionsFrame:SetPoint("CENTER")
     optionsFrame:SetFrameStrata("DIALOG")
     optionsFrame:SetMovable(true)
@@ -214,34 +214,85 @@ function Options:CreatePanel()
         function(v) settings.warnOffRoute = v end)
     yOff = yOff - 26
 
-    -- Warning sound selector
-    local soundChoices = { "RaidWarning", "ReadyCheck", "FlagTaken", "LevelUp", "None" }
+    -- Warning sound dropdown (built-in + SharedMedia)
     local soundLabel = content:CreateFontString(nil, "OVERLAY")
     soundLabel:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
     soundLabel:SetTextColor(unpack(C.textNormal))
     soundLabel:SetPoint("TOPLEFT", 42, yOff)
     soundLabel:SetText("Warning sound:")
 
-    local soundBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    soundBtn:SetPoint("LEFT", soundLabel, "RIGHT", 8, 0)
-    soundBtn:SetSize(110, 20)
-    soundBtn:SetText(settings.warnSound or "RaidWarning")
-    soundBtn:SetScript("OnClick", function(self)
-        local cur = settings.warnSound or "RaidWarning"
-        local idx = 1
-        for i, v in ipairs(soundChoices) do
-            if v == cur then idx = i; break end
+    local BUILTIN_SOUNDS = {
+        { name = "RaidWarning", id = 8959 },
+        { name = "ReadyCheck",  id = 8960 },
+        { name = "FlagTaken",   id = 8174 },
+        { name = "LevelUp",     id = 888 },
+        { name = "None",        id = nil },
+    }
+
+    local dropName = "MDTPAWarnSoundDropdown"
+    local dropdown = CreateFrame("Frame", dropName, content, "UIDropDownMenuTemplate")
+    dropdown:SetPoint("LEFT", soundLabel, "RIGHT", -8, -2)
+    UIDropDownMenu_SetWidth(dropdown, 140)
+
+    local function GetSoundChoices()
+        local list = {}
+        for _, s in ipairs(BUILTIN_SOUNDS) do
+            table.insert(list, { name = s.name, id = s.id, path = nil })
         end
-        idx = (idx % #soundChoices) + 1
-        settings.warnSound = soundChoices[idx]
-        self:SetText(soundChoices[idx])
-        -- Preview the sound
-        local WARNING_SOUNDS = {
-            ["RaidWarning"] = 8959, ["ReadyCheck"] = 8960,
-            ["FlagTaken"] = 8174, ["LevelUp"] = 888,
-        }
-        local id = WARNING_SOUNDS[soundChoices[idx]]
-        if id then PlaySound(id, "Master") end
+        -- Add SharedMedia sounds if available
+        local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+        if LSM then
+            local mediaList = LSM:List("sound")
+            if mediaList then
+                for _, sndName in ipairs(mediaList) do
+                    local path = LSM:Fetch("sound", sndName)
+                    if path then
+                        table.insert(list, { name = "SM: " .. sndName, id = nil, path = path })
+                    end
+                end
+            end
+        end
+        return list
+    end
+
+    local function PreviewSound(entry)
+        if entry.id then
+            PlaySound(entry.id, "Master")
+        elseif entry.path then
+            PlaySoundFile(entry.path, "Master")
+        end
+    end
+
+    local function InitDropdown(self, level, menuList)
+        local choices = GetSoundChoices()
+        local cur = settings.warnSound or "RaidWarning"
+        for _, entry in ipairs(choices) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = entry.name
+            info.checked = (cur == entry.name)
+            info.func = function()
+                settings.warnSound = entry.name
+                settings.warnSoundPath = entry.path
+                settings.warnSoundID = entry.id
+                UIDropDownMenu_SetText(dropdown, entry.name)
+                CloseDropDownMenus()
+                PreviewSound(entry)
+            end
+            UIDropDownMenu_AddButton(info, level)
+        end
+    end
+
+    UIDropDownMenu_Initialize(dropdown, InitDropdown)
+    UIDropDownMenu_SetText(dropdown, settings.warnSound or "RaidWarning")
+    yOff = yOff - 34
+
+    -- Preview Warning + Unlock Warning Position buttons
+    CreateButton(content, "Preview Warning", 42, yOff, 130, function()
+        PA.Display:ShowOffRouteWarning("Test Mob")
+    end)
+
+    CreateButton(content, "Unlock Warning Pos.", 182, yOff, 140, function()
+        PA.Display:ToggleWarningUnlock()
     end)
     yOff = yOff - 30
 
