@@ -123,6 +123,45 @@ function PA:GetSettings()
     return MPC_MDTPullAssistDB
 end
 
+----------------------------------------------------------------
+-- Spawn UID mapping (persistent across runs)
+-- Creature GUIDs: Creature-0-ServerID-InstanceID-ZoneUID-NpcID-SpawnUID
+-- SpawnUID is constant for a given mob spawn point across dungeon resets.
+-- We learn spawnUID → pullIdx as mobs die, then reuse it in future runs.
+----------------------------------------------------------------
+function PA:ExtractSpawnUID(guid)
+    if not guid or type(guid) ~= "string" then return nil end
+    -- Format: Creature-0-XXXX-XXXX-XXXX-NpcID-SpawnUID
+    local parts = { strsplit("-", guid) }
+    if parts[1] ~= "Creature" and parts[1] ~= "Vehicle" then return nil end
+    local spawnUID = parts[7]
+    if spawnUID and not isSecretValue(spawnUID) then return spawnUID end
+    return nil
+end
+
+function PA:GetSpawnMap(dungeonIdx)
+    local settings = self:GetSettings()
+    if not settings.spawnMap then settings.spawnMap = {} end
+    if not settings.spawnMap[dungeonIdx] then settings.spawnMap[dungeonIdx] = {} end
+    return settings.spawnMap[dungeonIdx]
+end
+
+function PA:LearnSpawn(dungeonIdx, spawnUID, pullIdx)
+    if not dungeonIdx or not spawnUID or not pullIdx then return end
+    local map = self:GetSpawnMap(dungeonIdx)
+    if map[spawnUID] ~= pullIdx then
+        map[spawnUID] = pullIdx
+        self:Debug("Spawn learned:", spawnUID, "-> pull", pullIdx)
+    end
+end
+
+function PA:GetSpawnPull(dungeonIdx, spawnUID)
+    if not dungeonIdx or not spawnUID then return nil end
+    local settings = self:GetSettings()
+    if not settings.spawnMap or not settings.spawnMap[dungeonIdx] then return nil end
+    return settings.spawnMap[dungeonIdx][spawnUID]
+end
+
 function PA:IsEnabled()
     -- Always enabled when addon is loaded
     return true
@@ -420,6 +459,16 @@ local function HandleCombatLog()
     if npcID then
         PA.Tracker:OnMobDeath(npcID)
 
+        -- Learn spawn UID → pull mapping for future runs
+        local plan = PA.RouteReader:GetPlan()
+        if plan then
+            local spawnUID = PA:ExtractSpawnUID(destGUID)
+            if spawnUID then
+                local currentPull = PA.Tracker:GetCurrentPullIndex()
+                PA:LearnSpawn(plan.dungeonIdx, spawnUID, currentPull)
+            end
+        end
+
         -- Off-route warning: if this npcID is not in any route pull
         local settings = PA:GetSettings()
         if settings.warnOffRoute ~= false and PA.RouteReader:HasRoute() then
@@ -583,9 +632,14 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
         local plan = PA.RouteReader:GetPlan()
         if plan then
             local pullIdx = PA.Tracker:GetCurrentPullIndex()
-            PA:Print(string.format("Route: %s | Pulls: %d | Current: #%d | Completed: %d/%d",
+            local spawnCount = 0
+            local settings = PA:GetSettings()
+            if settings.spawnMap and settings.spawnMap[plan.dungeonIdx] then
+                for _ in pairs(settings.spawnMap[plan.dungeonIdx]) do spawnCount = spawnCount + 1 end
+            end
+            PA:Print(string.format("Route: %s | Pulls: %d | Current: #%d | Completed: %d/%d | Spawns learned: %d",
                 plan.routeName, #plan.pulls, pullIdx,
-                PA.Tracker:GetCompletedPullCount(), #plan.pulls))
+                PA.Tracker:GetCompletedPullCount(), #plan.pulls, spawnCount))
 
             local nextPull = PA.Tracker:GetNextPull()
             if nextPull then
@@ -764,6 +818,11 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
             PA:Print(string.format("  %d nameplates scanned.", found))
         end
 
+    elseif cmd == "clearspawns" then
+        local settings = PA:GetSettings()
+        settings.spawnMap = {}
+        PA:Print("Spawn map cleared. Pull assignments will re-learn as mobs die.")
+
     elseif cmd == "help" then
         PA:Print("Commands:")
         PA:Print("  /mdtpa         - Show the pull assist frame")
@@ -775,6 +834,7 @@ SlashCmdList["MDTPULLASSIST"] = function(input)
         PA:Print("  /mdtpa reset   - Reset pull tracking")
         PA:Print("  /mdtpa status  - Print current status")
         PA:Print("  /mdtpa pull N  - Jump to pull #N")
+        PA:Print("  /mdtpa clearspawns - Clear learned mob-to-pull map")
         PA:Print("  /mdtpa debug   - Toggle debug mode")
         PA:Print("  |cFF44FF44Debug commands:|r")
         PA:Print("  /mdtpa load <dungeon> - Force-load a dungeon route")

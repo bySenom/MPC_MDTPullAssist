@@ -326,7 +326,7 @@ end
 ----------------------------------------------------------------
 -- Pull info resolution for a given npcID
 ----------------------------------------------------------------
-function Nameplates:GetPullInfoForNpc(npcID)
+function Nameplates:GetPullInfoForNpc(npcID, spawnUID)
     if not npcID then return nil end
     local pulls = npcPullMap[npcID]
     if not pulls or #pulls == 0 then return nil end
@@ -334,12 +334,31 @@ function Nameplates:GetPullInfoForNpc(npcID)
     local currentPullIdx = PA.Tracker:GetCurrentPullIndex()
     local bestPull = nil
 
-    -- Find the earliest non-complete pull containing this mob
-    for _, pullIdx in ipairs(pulls) do
-        local state = PA.Tracker:GetPullState(pullIdx)
-        if state ~= "complete" then
-            if not bestPull or pullIdx < bestPull then
-                bestPull = pullIdx
+    -- Priority 1: Use saved spawnUID → pullIdx mapping (learned from previous runs)
+    if spawnUID then
+        local plan = PA.RouteReader:GetPlan()
+        if plan then
+            local savedPull = PA:GetSpawnPull(plan.dungeonIdx, spawnUID)
+            if savedPull then
+                -- Verify this pull actually contains this npcID and isn't complete
+                for _, pullIdx in ipairs(pulls) do
+                    if pullIdx == savedPull and PA.Tracker:GetPullState(pullIdx) ~= "complete" then
+                        bestPull = savedPull
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    -- Priority 2: Fall back to earliest non-complete pull containing this mob
+    if not bestPull then
+        for _, pullIdx in ipairs(pulls) do
+            local state = PA.Tracker:GetPullState(pullIdx)
+            if state ~= "complete" then
+                if not bestPull or pullIdx < bestPull then
+                    bestPull = pullIdx
+                end
             end
         end
     end
@@ -481,7 +500,7 @@ function Nameplates:UpdateNameplate(nameplate, unit)
         return
     end
 
-    local info = self:GetPullInfoForNpc(npcID)
+    local info = self:GetPullInfoForNpc(npcID, PA:ExtractSpawnUID(UnitGUID(unit)))
     if not info then
         self:RemoveOverlay(nameplate)
         return
