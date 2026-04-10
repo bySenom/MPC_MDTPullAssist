@@ -385,7 +385,7 @@ function PA:UpdatePartySyncDisplay()
         end
     end
     if #mismatches > 0 then
-        self.Display:UpdatePartySync("⚠ " .. table.concat(mismatches, ", "))
+        self.Display:UpdatePartySync("! " .. table.concat(mismatches, ", "))
     else
         self.Display:UpdatePartySync(nil)
     end

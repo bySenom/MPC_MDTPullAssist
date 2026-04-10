@@ -421,7 +421,7 @@ function Nameplates:UpdateNameplate(nameplate, unit)
         if deathTimers[nameplate] then return end  -- already flashing
         local overlay = overlays[nameplate]
         if overlay and overlay:IsShown() then
-            overlay.text:SetText("✓")
+            overlay.text:SetText("DONE")
             overlay.text:SetTextColor(0.30, 1.00, 0.40, 1.0)
             deathTimers[nameplate] = C_Timer.After(1.5, function()
                 self:RemoveOverlay(nameplate)
@@ -465,7 +465,7 @@ function Nameplates:UpdateNameplate(nameplate, unit)
 
     -- Off-route detection: mob is identified but not in any route pull
     if not allRouteNpcIDs[npcID] then
-        if settings.warnOffRoute ~= false and UnitThreatSituation("player", unit) then
+        if settings.warnOffRoute ~= false and UnitAffectingCombat(unit) then
             local overlay = self:GetOrCreateOverlay(nameplate)
             self:AnchorOverlay(overlay, nameplate)
             overlay.text:SetText("OFF ROUTE")
@@ -496,7 +496,7 @@ function Nameplates:UpdateNameplate(nameplate, unit)
 
     local label
     if info.pullType == "current" then
-        label = string.format("► Pull %d", info.pullIdx)
+        label = string.format("> Pull %d", info.pullIdx)
     else
         label = string.format("Pull %d", info.pullIdx)
     end

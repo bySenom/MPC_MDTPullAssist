@@ -214,6 +214,37 @@ function Options:CreatePanel()
         function(v) settings.warnOffRoute = v end)
     yOff = yOff - 26
 
+    -- Warning sound selector
+    local soundChoices = { "RaidWarning", "ReadyCheck", "FlagTaken", "LevelUp", "None" }
+    local soundLabel = content:CreateFontString(nil, "OVERLAY")
+    soundLabel:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
+    soundLabel:SetTextColor(unpack(C.textNormal))
+    soundLabel:SetPoint("TOPLEFT", 42, yOff)
+    soundLabel:SetText("Warning sound:")
+
+    local soundBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    soundBtn:SetPoint("LEFT", soundLabel, "RIGHT", 8, 0)
+    soundBtn:SetSize(110, 20)
+    soundBtn:SetText(settings.warnSound or "RaidWarning")
+    soundBtn:SetScript("OnClick", function(self)
+        local cur = settings.warnSound or "RaidWarning"
+        local idx = 1
+        for i, v in ipairs(soundChoices) do
+            if v == cur then idx = i; break end
+        end
+        idx = (idx % #soundChoices) + 1
+        settings.warnSound = soundChoices[idx]
+        self:SetText(soundChoices[idx])
+        -- Preview the sound
+        local WARNING_SOUNDS = {
+            ["RaidWarning"] = 8959, ["ReadyCheck"] = 8960,
+            ["FlagTaken"] = 8174, ["LevelUp"] = 888,
+        }
+        local id = WARNING_SOUNDS[soundChoices[idx]]
+        if id then PlaySound(id, "Master") end
+    end)
+    yOff = yOff - 30
+
     CreateCheckbox(content, "Enable party sync", 16, yOff,
         function() return settings.partySyncEnabled ~= false end,
         function(v) settings.partySyncEnabled = v end)

@@ -27,7 +27,7 @@ local FRAME_MIN_HEIGHT = 60
 local LINE_HEIGHT = 14
 local HEADER_HEIGHT = 20
 local PADDING = 8
-
+111
 -- Dark theme colors matching MPC options panel
 local C = {
     bg         = { 0.06, 0.06, 0.08, 0.88 },
@@ -132,16 +132,6 @@ function Display:CreateFrame()
     progressBarText:SetPoint("CENTER", 0, 0)
     progressBarText:SetText("")
     progressBar:Hide()
-
-    -- Off-route warning text (above mob list, hidden by default)
-    warningText = mainFrame:CreateFontString(nil, "OVERLAY")
-    warningText:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
-    warningText:SetTextColor(0.95, 0.30, 0.30, 1.0)
-    warningText:SetPoint("TOPLEFT", PADDING, -(HEADER_HEIGHT + 22))
-    warningText:SetPoint("RIGHT", mainFrame, "RIGHT", -PADDING, 0)
-    warningText:SetJustifyH("CENTER")
-    warningText:SetText("")
-    warningText:Hide()
 
     -- Party sync indicator (below warning, hidden by default)
     partySyncText = mainFrame:CreateFontString(nil, "OVERLAY")
@@ -313,7 +303,7 @@ function Display:Update()
         local nameStr
         if mob.quantity > 1 then
             if isComplete then
-                nameStr = string.format("|cFF666666✓ %d× %s|r", mob.quantity, mob.name)
+                nameStr = string.format("|cFF666666x %d× %s|r", mob.quantity, mob.name)
             elseif killed > 0 then
                 nameStr = string.format("|cFFCCCCCC%d×|r %s |cFFFFCC00(%d/%d)|r", mob.quantity, mob.name, killed, expected)
             else
@@ -321,7 +311,7 @@ function Display:Update()
             end
         else
             if isComplete then
-                nameStr = string.format("|cFF666666✓ %s|r", mob.name)
+                nameStr = string.format("|cFF666666x %s|r", mob.name)
             else
                 nameStr = mob.name
             end
@@ -515,19 +505,105 @@ function Display:GetFrame()
     return mainFrame
 end
 
--- Show a temporary off-route warning on the display frame
-function Display:ShowOffRouteWarning(mobName)
-    if not mainFrame or not warningText then return end
-    local label = mobName and ("⚠ Off-route: " .. mobName .. "!") or "⚠ Off-route mob!"
-    warningText:SetText(label)
-    warningText:Show()
+----------------------------------------------------------------
+-- Off-route warning frame (standalone, movable, fades out)
+----------------------------------------------------------------
+local warningFrame = nil
+local warningFadeAnim = nil
 
-    -- Auto-dismiss after 5 seconds
-    if warningTimer then warningTimer:Cancel() end
-    warningTimer = C_Timer.NewTimer(5, function()
-        if warningText then warningText:Hide() end
-        warningTimer = nil
+local WARNING_SOUNDS = {
+    ["RaidWarning"]   = 8959,   -- RAID_WARNING
+    ["ReadyCheck"]    = 8960,   -- READY_CHECK
+    ["FlagTaken"]     = 8174,   -- PVP_FLAG_TAKEN_HORDE
+    ["LevelUp"]       = 888,    -- LEVEL_UP
+    ["None"]          = nil,
+}
+
+function Display:CreateWarningFrame()
+    if warningFrame then return end
+
+    warningFrame = CreateFrame("Frame", "MPCPullAssistWarning", UIParent, "BackdropTemplate")
+    warningFrame:SetSize(320, 50)
+    warningFrame:SetPoint("TOP", UIParent, "TOP", 0, -180)
+    warningFrame:SetFrameStrata("HIGH")
+    warningFrame:SetFrameLevel(100)
+    warningFrame:SetClampedToScreen(true)
+    warningFrame:SetMovable(true)
+    warningFrame:EnableMouse(true)
+    warningFrame:RegisterForDrag("LeftButton")
+    warningFrame:SetScript("OnDragStart", function(f) f:StartMoving() end)
+    warningFrame:SetScript("OnDragStop", function(f)
+        f:StopMovingOrSizing()
+        -- Save position
+        local settings = PA:GetSettings()
+        local point, _, relPoint, x, y = f:GetPoint()
+        settings.warningPoint = { point, relPoint, x, y }
     end)
+
+    warningFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    warningFrame:SetBackdropColor(0.15, 0.02, 0.02, 0.85)
+    warningFrame:SetBackdropBorderColor(0.90, 0.20, 0.20, 0.9)
+
+    warningText = warningFrame:CreateFontString(nil, "OVERLAY")
+    warningText:SetFont("Fonts\\FRIZQT__.TTF", 14, "OUTLINE")
+    warningText:SetTextColor(1.0, 0.30, 0.30, 1.0)
+    warningText:SetPoint("CENTER", 0, 0)
+    warningText:SetJustifyH("CENTER")
+
+    -- Fade-out animation
+    warningFadeAnim = warningFrame:CreateAnimationGroup()
+    local fadeOut = warningFadeAnim:CreateAnimation("Alpha")
+    fadeOut:SetFromAlpha(1)
+    fadeOut:SetToAlpha(0)
+    fadeOut:SetDuration(1.5)
+    fadeOut:SetStartDelay(3.0)  -- visible 3s, then 1.5s fade
+    fadeOut:SetOrder(1)
+    warningFadeAnim:SetScript("OnFinished", function()
+        warningFrame:Hide()
+        warningFrame:SetAlpha(1)
+    end)
+
+    -- Restore saved position
+    local settings = PA:GetSettings()
+    if settings.warningPoint then
+        local p = settings.warningPoint
+        warningFrame:ClearAllPoints()
+        warningFrame:SetPoint(p[1], UIParent, p[2], p[3], p[4])
+    end
+
+    warningFrame:Hide()
+end
+
+function Display:ShowOffRouteWarning(mobName)
+    if not warningFrame then self:CreateWarningFrame() end
+    if not warningFrame or not warningText then return end
+
+    local label = mobName and ("OFF ROUTE: " .. mobName) or "ADD PULLED OFF ROUTE"
+    warningText:SetText(label)
+
+    -- Stop existing fade, reset alpha
+    if warningFadeAnim then warningFadeAnim:Stop() end
+    warningFrame:SetAlpha(1)
+    warningFrame:Show()
+
+    -- Start fade animation
+    if warningFadeAnim then warningFadeAnim:Play() end
+
+    -- Clear auto-dismiss timer from old system
+    if warningTimer then warningTimer:Cancel(); warningTimer = nil end
+
+    -- Play sound
+    local settings = PA:GetSettings()
+    local soundKey = settings.warnSound or "RaidWarning"
+    local soundID = WARNING_SOUNDS[soundKey]
+    if soundID then
+        PlaySound(soundID, "Master")
+    end
 end
 
 -- Update party sync indicator text
