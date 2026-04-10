@@ -218,16 +218,17 @@ function PA:ForceLoadDungeon(challengeMapID)
 end
 
 -- Event frame
--- Defer event registration to C_Timer.After(0) so it runs in a clean,
--- untainted execution context.  By the time the callback fires every addon
--- has already loaded, so we skip ADDON_LOADED and initialise directly.
-local eventFrame = CreateFrame("Frame")
+-- Create the frame AND register events inside C_Timer.After(0) so both
+-- happen in a clean, untainted execution context (the main chunk is
+-- tainted by other addons reading secure globals before us).
+local eventFrame
 
 C_Timer.After(0, function()
     -- Saved-variables are available now (all ADDON_LOADED events have fired)
     if not MPC_MDTPullAssistDB then MPC_MDTPullAssistDB = {} end
     PA:OnEnable()
 
+    eventFrame = CreateFrame("Frame")
     eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     eventFrame:RegisterEvent("CHALLENGE_MODE_START")
     eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
@@ -239,11 +240,13 @@ C_Timer.After(0, function()
     eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
     eventFrame:RegisterEvent("CHAT_MSG_ADDON")
     eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-end)
+    PA:SetupEventDispatcher(eventFrame)
 
-local function OnAddonLoaded(addonName)
-    -- No longer used; kept for reference
-end
+    -- Fire initial load since we missed PLAYER_ENTERING_WORLD if already in-world
+    C_Timer.After(1, function()
+        PA:TryAutoLoad()
+    end)
+end)
 
 -- Called when the addon is enabled
 local enabled = false
@@ -458,8 +461,9 @@ local function StopRouteCheckTicker()
     end
 end
 
--- Event dispatcher
-eventFrame:SetScript("OnEvent", function(self, event, ...)
+-- Event dispatcher (called from C_Timer.After to keep the frame untainted)
+function PA:SetupEventDispatcher(ef)
+    ef:SetScript("OnEvent", function(_, event, ...)
     -- Ignore all events until fully initialized
     if not enabled then return end
 
@@ -523,7 +527,8 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         end
         PA:UpdatePartySyncDisplay()
     end
-end)
+    end)
+end
 
 -- Slash commands
 SLASH_MDTPULLASSIST1 = "/mdtpa"
