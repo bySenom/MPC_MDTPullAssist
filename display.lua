@@ -307,11 +307,11 @@ function Display:Update()
         local nameStr
         if mob.quantity > 1 then
             if isComplete then
-                nameStr = string.format("|cFF666666x %d× %s|r", mob.quantity, mob.name)
+                nameStr = string.format("|cFF666666x %dx %s|r", mob.quantity, mob.name)
             elseif killed > 0 then
-                nameStr = string.format("|cFFCCCCCC%d×|r %s |cFFFFCC00(%d/%d)|r", mob.quantity, mob.name, killed, expected)
+                nameStr = string.format("|cFFCCCCCC%dx|r %s |cFFFFCC00(%d/%d)|r", mob.quantity, mob.name, killed, expected)
             else
-                nameStr = string.format("|cFFCCCCCC%d×|r %s", mob.quantity, mob.name)
+                nameStr = string.format("|cFFCCCCCC%dx|r %s", mob.quantity, mob.name)
             end
         else
             if isComplete then
@@ -382,12 +382,12 @@ function Display:Update()
 
         local totalStr = ""
         if showCount and showPercent then
-            totalStr = string.format("|cFFFFFFFF%d|r (|cFF66CCFF%.1f%%|r) → cum. |cFF66CCFF%.1f%%|r",
+            totalStr = string.format("|cFFFFFFFF%d|r (|cFF66CCFF%.1f%%|r) > cum. |cFF66CCFF%.1f%%|r",
                 pull.totalForces, pull.totalPercent, pull.cumPercent)
         elseif showCount then
-            totalStr = string.format("|cFFFFFFFF%d|r → cum. %d", pull.totalForces, pull.cumForces)
+            totalStr = string.format("|cFFFFFFFF%d|r > cum. %d", pull.totalForces, pull.cumForces)
         else
-            totalStr = string.format("|cFF66CCFF%.1f%%|r → cum. |cFF66CCFF%.1f%%|r", pull.totalPercent, pull.cumPercent)
+            totalStr = string.format("|cFF66CCFF%.1f%%|r > cum. |cFF66CCFF%.1f%%|r", pull.totalPercent, pull.cumPercent)
         end
         line.forces:SetText(totalStr)
         line.forces:SetTextColor(unpack(C.textNormal))
