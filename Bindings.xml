@@ -1,11 +1,11 @@
 <Bindings>
-  <Binding name="MDTPA_TOGGLE_FRAME" header="BINDING_HEADER_MDTPULLASSIST" runOnUp="false">
+  <Binding name="MDTPA_TOGGLE_FRAME" category="MDT Pull Assist">
     PA_ToggleFrame();
   </Binding>
-  <Binding name="MDTPA_NEXT_PULL" header="BINDING_HEADER_MDTPULLASSIST" runOnUp="false">
+  <Binding name="MDTPA_NEXT_PULL" category="MDT Pull Assist">
     PA_NextPull();
   </Binding>
-  <Binding name="MDTPA_PREV_PULL" header="BINDING_HEADER_MDTPULLASSIST" runOnUp="false">
+  <Binding name="MDTPA_PREV_PULL" category="MDT Pull Assist">
     PA_PrevPull();
   </Binding>
 </Bindings>
