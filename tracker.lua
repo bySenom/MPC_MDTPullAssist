@@ -16,7 +16,6 @@ local pullStates = {}             -- [pullIdx] = "pending" | "active" | "complet
 local deadNpcCounts = {}          -- [npcID] = number of kills (global)
 local lastCompletedPct = 0        -- last known scenario completion %
 local initialized = false
-local offRouteNpcIDs = {}         -- [npcID] = true, mobs killed that aren't in any route pull
 
 local COMPLETION_THRESHOLD = 0.90  -- 90% of pull forces → consider pull done
 
@@ -42,7 +41,6 @@ function Tracker:Reset()
     currentPullIdx = 1
     wipe(pullStates)
     wipe(deadNpcCounts)
-    wipe(offRouteNpcIDs)
     lastCompletedPct = 0
 
     local plan = PA.RouteReader:GetPlan()
@@ -92,24 +90,6 @@ end
 function Tracker:OnMobDeath(npcID)
     if not npcID or npcID <= 0 then return end
     deadNpcCounts[npcID] = (deadNpcCounts[npcID] or 0) + 1
-
-    -- Track off-route kills
-    local plan = PA.RouteReader:GetPlan()
-    if plan then
-        local isInRoute = false
-        for _, pull in ipairs(plan.pulls) do
-            for _, mob in ipairs(pull.mobs) do
-                if mob.npcID == npcID then
-                    isInRoute = true
-                    break
-                end
-            end
-            if isInRoute then break end
-        end
-        if not isInRoute then
-            offRouteNpcIDs[npcID] = true
-        end
-    end
 
     self:EvaluatePulls()
 end
@@ -305,9 +285,4 @@ function Tracker:IsNpcInRoute(npcID)
         end
     end
     return false
-end
-
--- Get table of off-route npcIDs that have died
-function Tracker:GetOffRouteKills()
-    return offRouteNpcIDs
 end

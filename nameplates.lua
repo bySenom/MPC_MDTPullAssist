@@ -446,9 +446,10 @@ function Nameplates:UpdateNameplate(nameplate, unit)
     if not npcID then
         -- Schedule one retry in 2s for late model loading
         if not pendingRetry[nameplate] then
+            local guid = UnitGUID(unit)
             pendingRetry[nameplate] = C_Timer.After(2, function()
                 pendingRetry[nameplate] = nil
-                if UnitExists(unit) then
+                if UnitExists(unit) and UnitGUID(unit) == guid then
                     local np = C_NamePlate.GetNamePlateForUnit(unit)
                     if np then self:UpdateNameplate(np, unit) end
                 end
@@ -485,8 +486,11 @@ function Nameplates:UpdateNameplate(nameplate, unit)
 
     -- Respect visibility settings per pull type
     if settings.nameplatesCurrentOnly and info.pullType ~= "current" then
-        self:RemoveOverlay(nameplate)
-        return
+        -- Still show next pull if enabled
+        if not (settings.showNextPull and info.pullType == "upcoming" and info.pullIdx == PA.Tracker:GetCurrentPullIndex() + 1) then
+            self:RemoveOverlay(nameplate)
+            return
+        end
     end
 
     local overlay = self:GetOrCreateOverlay(nameplate)

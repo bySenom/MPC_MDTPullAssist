@@ -89,7 +89,28 @@ function RouteReader:LoadRoute(challengeMapID)
             totalPercent = 0,
             cumForces = 0,
             cumPercent = 0,
+            color = nil,  -- MDT pull color {r,g,b} if set
+            note = nil,   -- MDT pull note text if set
         }
+
+        -- Read MDT pull color (stored as pullData.color = {r,g,b,a} or string key)
+        if pullData.color then
+            local c = pullData.color
+            if type(c) == "table" and c[1] and c[2] and c[3] then
+                pullInfo.color = { c[1], c[2], c[3] }
+            elseif type(c) == "string" then
+                -- Some MDT versions use hex strings
+                local r, g, b = c:match("(%x%x)(%x%x)(%x%x)")
+                if r then
+                    pullInfo.color = { tonumber(r, 16) / 255, tonumber(g, 16) / 255, tonumber(b, 16) / 255 }
+                end
+            end
+        end
+
+        -- Read MDT pull note
+        if pullData.note and type(pullData.note) == "string" and pullData.note ~= "" then
+            pullInfo.note = pullData.note
+        end
 
         -- MDT pull format: pullData[enemyIdx] = { cloneIdx1, cloneIdx2, ... }
         local mobAggregation = {}  -- npcID → { npcID, name, count, quantity }

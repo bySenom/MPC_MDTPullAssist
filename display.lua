@@ -18,10 +18,9 @@ local unlockGlow = nil
 local progressBar = nil     -- forces progress bar
 local progressBarText = nil
 local warningText = nil     -- off-route warning
-local warningTimer = nil
 local partySyncText = nil   -- party sync indicator
 
-local MAX_MOB_LINES = 12
+local MAX_MOB_LINES = 14
 local FRAME_WIDTH = 220
 local FRAME_MIN_HEIGHT = 60
 local LINE_HEIGHT = 14
@@ -274,7 +273,13 @@ function Display:Update()
     end
 
     -- Header
+    local settings = PA:GetSettings()
+    local headerColor = C.accent
+    if settings.usePullColors ~= false and pull.color then
+        headerColor = { pull.color[1], pull.color[2], pull.color[3], 1.0 }
+    end
     headerText:SetText(string.format("Next Pull |cFFFFFFFF#%d|r", pullIdx))
+    headerText:SetTextColor(unpack(headerColor))
     progressText:SetText(string.format("%d/%d", pullIdx - 1, #plan.pulls))
     routeText:SetText(plan.routeName)
 
@@ -282,7 +287,6 @@ function Display:Update()
     local mobKills = PA.Tracker:GetMobKillsForPull(pullIdx)
 
     -- Mob lines
-    local settings = PA:GetSettings()
     local showCount = settings.showCount ~= false
     local showPercent = settings.showPercent ~= false
     local lineCount = 0
@@ -398,6 +402,29 @@ function Display:Update()
         mobLines[i].forces:Hide()
     end
 
+    -- Pull note (if enabled and present)
+    if settings.showPullNotes ~= false and pull.note then
+        lineCount = lineCount + 1
+        if lineCount <= MAX_MOB_LINES then
+            local line = mobLines[lineCount]
+            local yOff = -(MOB_TOP_OFFSET + (lineCount - 1) * LINE_HEIGHT + 2)
+            line.name:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", PADDING, yOff)
+            line.name:SetPoint("RIGHT", mainFrame, "RIGHT", -PADDING, 0)
+            line.forces:SetPoint("TOPRIGHT", mainFrame, "TOPRIGHT", -PADDING, yOff)
+            line.name:SetText("|cFFAAAA66Note: " .. pull.note .. "|r")
+            line.name:SetTextColor(0.67, 0.67, 0.4, 0.9)
+            line.forces:SetText("")
+            line.forces:Hide()
+            line.name:Show()
+        end
+    end
+
+    -- Hide remaining lines
+    for i = lineCount + 1, MAX_MOB_LINES do
+        mobLines[i].name:Hide()
+        mobLines[i].forces:Hide()
+    end
+
     self:ResizeFrame(lineCount)
 end
 
@@ -428,12 +455,37 @@ function Display:ResizeFrame(lineCount)
     mainFrame:SetHeight(height)
 end
 
+-- Pull complete sound options
+local PULL_COMPLETE_SOUNDS = {
+    ["MapPing"]       = 3175,    -- MAP_PIN
+    ["QuestComplete"] = 878,     -- QUEST_COMPLETE
+    ["LevelUp"]       = 888,     -- LEVEL_UP
+    ["ReadyCheck"]    = 8960,    -- READY_CHECK
+    ["None"]          = nil,
+}
+
 -- Pull transition callbacks
 function Display:OnPullAdvanced(newIdx)
     if flashAnim then flashAnim:Play() end
     self:Update()
     -- Broadcast pull to party
     PA:BroadcastPull(newIdx)
+
+    -- Play pull completion sound
+    local settings = PA:GetSettings()
+    if settings.pullCompleteSound ~= false then
+        local soundKey = settings.pullCompleteSoundChoice or "MapPing"
+        if soundKey ~= "None" then
+            if settings.pullCompleteSoundPath then
+                PlaySoundFile(settings.pullCompleteSoundPath, "Master")
+            else
+                local soundID = settings.pullCompleteSoundID or PULL_COMPLETE_SOUNDS[soundKey]
+                if soundID then
+                    PlaySound(soundID, "Master")
+                end
+            end
+        end
+    end
 end
 
 function Display:OnAllPullsComplete()
@@ -596,8 +648,7 @@ function Display:ShowOffRouteWarning(mobName)
         warningFadeAnim:Play()
     end
 
-    -- Clear auto-dismiss timer from old system
-    if warningTimer then warningTimer:Cancel(); warningTimer = nil end
+    -- Clear auto-dismiss timer from old system (no-op, kept for safety)
 
     -- Play sound (supports built-in IDs and SharedMedia paths)
     local settings = PA:GetSettings()

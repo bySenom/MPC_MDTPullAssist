@@ -232,6 +232,7 @@ eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 eventFrame:RegisterEvent("CHAT_MSG_ADDON")
+eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 
 local function OnAddonLoaded(addonName)
     if addonName ~= ADDON_NAME then return end
@@ -324,6 +325,11 @@ function PA:TryAutoLoad()
         self:ReloadRoute()
     end
 
+    -- Ensure route check ticker is running if in M+ (covers /reload mid-key)
+    if self:IsInMythicPlus() then
+        StartRouteCheckTicker()
+    end
+
     self.Display:UpdateVisibility()
 end
 
@@ -393,7 +399,7 @@ end
 
 -- Combat log handler for mob death tracking
 local function HandleCombatLog()
-    local _, subEvent, _, _, _, _, _, destGUID = CombatLogGetCurrentEventInfo()
+    local _, subEvent, _, _, _, _, _, destGUID, destName = CombatLogGetCurrentEventInfo()
     if subEvent ~= "UNIT_DIED" then return end
 
     if not destGUID or type(destGUID) ~= "string" then return end
@@ -414,8 +420,6 @@ local function HandleCombatLog()
         local settings = PA:GetSettings()
         if settings.warnOffRoute ~= false and PA.RouteReader:HasRoute() then
             if not PA.Tracker:IsNpcInRoute(npcID) then
-                -- Try to get mob name from combat log
-                local _, _, _, _, _, _, _, _, destName = CombatLogGetCurrentEventInfo()
                 local mobName = destName
                 if mobName and isSecretValue(mobName) then mobName = nil end
                 PA.Display:ShowOffRouteWarning(mobName)
@@ -504,6 +508,24 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
     elseif event == "CHAT_MSG_ADDON" then
         PA:OnPartySyncReceived(...)
+
+    elseif event == "GROUP_ROSTER_UPDATE" then
+        -- Clean stale partyPulls entries for players no longer in group
+        for name in pairs(partyPulls) do
+            local inGroup = false
+            for i = 1, GetNumGroupMembers() do
+                local unit = IsInRaid() and ("raid" .. i) or ("party" .. i)
+                local uName = UnitName(unit)
+                if uName and Ambiguate(uName, "none") == name then
+                    inGroup = true
+                    break
+                end
+            end
+            if not inGroup then
+                partyPulls[name] = nil
+            end
+        end
+        PA:UpdatePartySyncDisplay()
     end
 end)
 
