@@ -21,11 +21,11 @@ local warningText = nil     -- off-route warning
 local partySyncText = nil   -- party sync indicator
 
 local MAX_MOB_LINES = 14
-local FRAME_WIDTH = 220
-local FRAME_MIN_HEIGHT = 60
-local LINE_HEIGHT = 14
-local HEADER_HEIGHT = 20
-local PADDING = 8
+local FRAME_WIDTH = 260
+local FRAME_MIN_HEIGHT = 70
+local LINE_HEIGHT = 16
+local HEADER_HEIGHT = 24
+local PADDING = 10
 
 -- Dark theme colors matching MPC options panel
 local C = {
@@ -92,30 +92,30 @@ function Display:CreateFrame()
 
     -- Header: "Pull #N"
     headerText = mainFrame:CreateFontString(nil, "OVERLAY")
-    headerText:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
+    headerText:SetFont("Fonts\\FRIZQT__.TTF", 13, "OUTLINE")
     headerText:SetTextColor(unpack(C.accent))
     headerText:SetPoint("TOPLEFT", PADDING, -(PADDING / 2))
     headerText:SetText("Pull #1")
 
     -- Progress on right side of header
     progressText = mainFrame:CreateFontString(nil, "OVERLAY")
-    progressText:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+    progressText:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
     progressText:SetTextColor(unpack(C.textDim))
     progressText:SetPoint("TOPRIGHT", -PADDING, -(PADDING / 2 + 1))
     progressText:SetText("")
 
     -- Route name (small, below header)
     routeText = mainFrame:CreateFontString(nil, "OVERLAY")
-    routeText:SetFont("Fonts\\FRIZQT__.TTF", 8, "")
+    routeText:SetFont("Fonts\\FRIZQT__.TTF", 9, "")
     routeText:SetTextColor(unpack(C.textDim))
     routeText:SetPoint("TOPLEFT", PADDING, -(HEADER_HEIGHT + 2))
     routeText:SetText("")
 
     -- Forces progress bar (below route name)
     progressBar = CreateFrame("StatusBar", nil, mainFrame)
-    progressBar:SetPoint("TOPLEFT", PADDING, -(HEADER_HEIGHT + 12))
+    progressBar:SetPoint("TOPLEFT", PADDING, -(HEADER_HEIGHT + 14))
     progressBar:SetPoint("RIGHT", mainFrame, "RIGHT", -PADDING, 0)
-    progressBar:SetHeight(8)
+    progressBar:SetHeight(10)
     progressBar:SetMinMaxValues(0, 100)
     progressBar:SetValue(0)
     progressBar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
@@ -126,7 +126,7 @@ function Display:CreateFrame()
     barBg:SetColorTexture(0.15, 0.15, 0.18, 1.0)
 
     progressBarText = progressBar:CreateFontString(nil, "OVERLAY")
-    progressBarText:SetFont("Fonts\\FRIZQT__.TTF", 7, "OUTLINE")
+    progressBarText:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
     progressBarText:SetTextColor(1, 1, 1, 0.9)
     progressBarText:SetPoint("CENTER", 0, 0)
     progressBarText:SetText("")
@@ -134,7 +134,7 @@ function Display:CreateFrame()
 
     -- Party sync indicator (below warning, hidden by default)
     partySyncText = mainFrame:CreateFontString(nil, "OVERLAY")
-    partySyncText:SetFont("Fonts\\FRIZQT__.TTF", 9, "")
+    partySyncText:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
     partySyncText:SetTextColor(1.0, 0.82, 0.0, 0.9)
     partySyncText:SetJustifyH("CENTER")
     partySyncText:SetText("")
@@ -142,7 +142,7 @@ function Display:CreateFrame()
 
     -- "No route loaded" text
     noRouteText = mainFrame:CreateFontString(nil, "OVERLAY")
-    noRouteText:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
+    noRouteText:SetFont("Fonts\\FRIZQT__.TTF", 11, "")
     noRouteText:SetTextColor(unpack(C.textDim))
     noRouteText:SetPoint("CENTER", 0, 0)
     noRouteText:SetText("No MDT route loaded")
@@ -153,13 +153,13 @@ function Display:CreateFrame()
         local line = {}
 
         line.name = mainFrame:CreateFontString(nil, "OVERLAY")
-        line.name:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
+        line.name:SetFont("Fonts\\FRIZQT__.TTF", 11, "")
         line.name:SetTextColor(unpack(C.textNormal))
         line.name:SetJustifyH("LEFT")
         line.name:SetWordWrap(false)
 
         line.forces = mainFrame:CreateFontString(nil, "OVERLAY")
-        line.forces:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
+        line.forces:SetFont("Fonts\\FRIZQT__.TTF", 11, "")
         line.forces:SetTextColor(unpack(C.green))
         line.forces:SetJustifyH("RIGHT")
 
@@ -290,7 +290,7 @@ function Display:Update()
     local showCount = settings.showCount ~= false
     local showPercent = settings.showPercent ~= false
     local lineCount = 0
-    local MOB_TOP_OFFSET = HEADER_HEIGHT + 24  -- shifted down for progress bar
+    local MOB_TOP_OFFSET = HEADER_HEIGHT + 28  -- shifted down for progress bar
 
     for i, mob in ipairs(pull.mobs) do
         if i > MAX_MOB_LINES then break end
