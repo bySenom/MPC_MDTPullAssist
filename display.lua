@@ -193,35 +193,29 @@ function Display:CreateFrame()
 end
 
 function Display:ShowContextMenu()
-    local menu = {
-        { text = "MDT Pull Assist", isTitle = true, notCheckable = true },
-        { text = "Reload Route", notCheckable = true, func = function()
+    MenuUtil.CreateContextMenu(mainFrame, function(ownerRegion, rootDescription)
+        rootDescription:CreateTitle("MDT Pull Assist")
+        rootDescription:CreateButton("Reload Route", function()
             PA:ReloadRoute()
-        end },
-        { text = "Reset Tracking", notCheckable = true, func = function()
+        end)
+        rootDescription:CreateButton("Reset Tracking", function()
             PA.Tracker:Reset()
             self:Update()
-        end },
-        { text = "---", notCheckable = true },
-        { text = "Next Pull", notCheckable = true, func = function()
+        end)
+        rootDescription:CreateDivider()
+        rootDescription:CreateButton("Next Pull", function()
             local idx = PA.Tracker:GetCurrentPullIndex()
             PA.Tracker:SetCurrentPull(idx + 1)
-        end },
-        { text = "Previous Pull", notCheckable = true, func = function()
+        end)
+        rootDescription:CreateButton("Previous Pull", function()
             local idx = PA.Tracker:GetCurrentPullIndex()
             if idx > 1 then PA.Tracker:SetCurrentPull(idx - 1) end
-        end },
-        { text = "---", notCheckable = true },
-        { text = "Hide", notCheckable = true, func = function()
+        end)
+        rootDescription:CreateDivider()
+        rootDescription:CreateButton("Hide", function()
             self:SetShown(false)
-        end },
-    }
-
-    -- Use EasyMenu or fallback
-    if not _G.MPCPullAssistDropdown then
-        _G.MPCPullAssistDropdown = CreateFrame("Frame", "MPCPullAssistDropdown", UIParent, "UIDropDownMenuTemplate")
-    end
-    EasyMenu(menu, _G.MPCPullAssistDropdown, "cursor", 0, 0, "MENU")
+        end)
+    end)
 end
 
 -- Update the display with current pull data
