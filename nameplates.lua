@@ -472,6 +472,9 @@ function Nameplates:UpdateNameplate(nameplate, unit)
             overlay.text:SetText("OFF ROUTE")
             overlay.text:SetTextColor(unpack(PULL_COLORS.offroute))
             overlay:Show()
+            -- Trigger the big warning frame
+            local mobName = self:GetNameFromNameplate(nameplate) or UnitName(unit)
+            PA.Display:ShowOffRouteWarning(mobName)
         else
             self:RemoveOverlay(nameplate)
         end

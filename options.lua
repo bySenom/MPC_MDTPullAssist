@@ -111,7 +111,7 @@ function Options:CreatePanel()
     local settings = PA:GetSettings()
 
     optionsFrame = CreateFrame("Frame", "MPCPullAssistOptions", UIParent, "BackdropTemplate")
-    optionsFrame:SetSize(340, 830)
+    optionsFrame:SetSize(340, 740)
     optionsFrame:SetPoint("CENTER")
     optionsFrame:SetFrameStrata("DIALOG")
     optionsFrame:SetMovable(true)
@@ -310,75 +310,6 @@ function Options:CreatePanel()
         PA.Display:ToggleWarningUnlock()
     end)
     yOff = yOff - 30
-
-    -- Pull completion sound
-    CreateCheckbox(content, "Play sound on pull complete", 16, yOff,
-        function() return settings.pullCompleteSound ~= false end,
-        function(v) settings.pullCompleteSound = v end)
-    yOff = yOff - 26
-
-    local pcSoundLabel = content:CreateFontString(nil, "OVERLAY")
-    pcSoundLabel:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
-    pcSoundLabel:SetTextColor(unpack(C.textNormal))
-    pcSoundLabel:SetPoint("TOPLEFT", 42, yOff)
-    pcSoundLabel:SetText("Complete sound:")
-
-    local BUILTIN_PC_SOUNDS = {
-        { name = "MapPing",       id = 3175 },
-        { name = "QuestComplete", id = 878 },
-        { name = "LevelUp",      id = 888 },
-        { name = "ReadyCheck",    id = 8960 },
-        { name = "None",          id = nil },
-    }
-
-    local pcDropName = "MDTPAPullCompleteSoundDropdown"
-    local pcDropdown = CreateFrame("Frame", pcDropName, content, "UIDropDownMenuTemplate")
-    pcDropdown:SetPoint("LEFT", pcSoundLabel, "RIGHT", -8, -2)
-    UIDropDownMenu_SetWidth(pcDropdown, 130)
-
-    local function GetPCSoundChoices()
-        local list = {}
-        for _, s in ipairs(BUILTIN_PC_SOUNDS) do
-            table.insert(list, { name = s.name, id = s.id, path = nil })
-        end
-        local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
-        if LSM then
-            local mediaList = LSM:List("sound")
-            if mediaList then
-                for _, sndName in ipairs(mediaList) do
-                    local path = LSM:Fetch("sound", sndName)
-                    if path then
-                        table.insert(list, { name = "SM: " .. sndName, id = nil, path = path })
-                    end
-                end
-            end
-        end
-        return list
-    end
-
-    local function InitPCDropdown(self, level, menuList)
-        local choices = GetPCSoundChoices()
-        local cur = settings.pullCompleteSoundChoice or "MapPing"
-        for _, entry in ipairs(choices) do
-            local info = UIDropDownMenu_CreateInfo()
-            info.text = entry.name
-            info.checked = (cur == entry.name)
-            info.func = function()
-                settings.pullCompleteSoundChoice = entry.name
-                settings.pullCompleteSoundPath = entry.path
-                settings.pullCompleteSoundID = entry.id
-                UIDropDownMenu_SetText(pcDropdown, entry.name)
-                CloseDropDownMenus()
-                if entry.id then PlaySound(entry.id, "Master")
-                elseif entry.path then PlaySoundFile(entry.path, "Master") end
-            end
-            UIDropDownMenu_AddButton(info, level)
-        end
-    end
-
-    UIDropDownMenu_Initialize(pcDropdown, InitPCDropdown)
-    UIDropDownMenu_SetText(pcDropdown, settings.pullCompleteSoundChoice or "MapPing")
-    yOff = yOff - 34
 
     CreateCheckbox(content, "Enable party sync", 16, yOff,
         function() return settings.partySyncEnabled ~= false end,

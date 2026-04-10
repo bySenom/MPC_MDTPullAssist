@@ -449,37 +449,12 @@ function Display:ResizeFrame(lineCount)
     mainFrame:SetHeight(height)
 end
 
--- Pull complete sound options
-local PULL_COMPLETE_SOUNDS = {
-    ["MapPing"]       = 3175,    -- MAP_PIN
-    ["QuestComplete"] = 878,     -- QUEST_COMPLETE
-    ["LevelUp"]       = 888,     -- LEVEL_UP
-    ["ReadyCheck"]    = 8960,    -- READY_CHECK
-    ["None"]          = nil,
-}
-
 -- Pull transition callbacks
 function Display:OnPullAdvanced(newIdx)
     if flashAnim then flashAnim:Play() end
     self:Update()
     -- Broadcast pull to party
     PA:BroadcastPull(newIdx)
-
-    -- Play pull completion sound
-    local settings = PA:GetSettings()
-    if settings.pullCompleteSound ~= false then
-        local soundKey = settings.pullCompleteSoundChoice or "MapPing"
-        if soundKey ~= "None" then
-            if settings.pullCompleteSoundPath then
-                PlaySoundFile(settings.pullCompleteSoundPath, "Master")
-            else
-                local soundID = settings.pullCompleteSoundID or PULL_COMPLETE_SOUNDS[soundKey]
-                if soundID then
-                    PlaySound(soundID, "Master")
-                end
-            end
-        end
-    end
 end
 
 function Display:OnAllPullsComplete()
